@@ -21,11 +21,13 @@ flowchart LR
         UC_UserMgmt["Quản lý người dùng (US-02)"]
     end
 
-    subgraph E2["E2: Khóa học & Bài giảng"]
+    subgraph E2["E2: Khóa học, Bài giảng & Lịch học"]
         UC_CreateCourse["Tạo & Quản lý khóa học (US-03)"]
         UC_Enroll["Ghi danh bằng mã (US-04)"]
         UC_UploadMaterial["Đăng bài giảng & tài liệu (US-05)"]
         UC_DownloadMaterial["Xem & tải tài liệu (US-06)"]
+        UC_ManageSchedule["Quản lý lịch học (US-17)"]
+        UC_ViewSchedule["Xem lịch học & TKB (US-18)"]
     end
 
     subgraph E3["E3: Bài tập Tự luận"]
@@ -58,6 +60,7 @@ flowchart LR
     GV --> UC_Login
     GV --> UC_CreateCourse
     GV --> UC_UploadMaterial
+    GV --> UC_ManageSchedule
     GV --> UC_CreateAssign
     GV --> UC_GradeAssign
     GV --> UC_CreateQuiz
@@ -69,6 +72,7 @@ flowchart LR
     SV --> UC_Login
     SV --> UC_Enroll
     SV --> UC_DownloadMaterial
+    SV --> UC_ViewSchedule
     SV --> UC_SubmitAssign
     SV --> UC_TakeQuiz
     SV --> UC_ViewStudentGrade

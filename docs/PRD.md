@@ -32,7 +32,7 @@ Trong môi trường giáo dục đại học, nhu cầu quản lý việc dạy
 | Mã Epic | Tên Epic | Mô tả tóm tắt | Mức độ ưu tiên |
 |---|---|---|---|
 | **E1** | Quản lý Tài khoản & Xác thực | Đăng nhập, phân quyền 3 vai trò (Admin, Giảng viên, Sinh viên), khóa/mở tài khoản. | **Must** |
-| **E2** | Quản lý Khóa học & Bài giảng | Tạo khóa học, sinh viên tham gia bằng mã khóa học (Enrollment Key), đăng tải và tải tài liệu học tập. | **Must** |
+| **E2** | Quản lý Khóa học, Bài giảng & Lịch học | Tạo khóa học, sinh viên tham gia bằng mã khóa học (Enrollment Key), đăng tải và tải tài liệu học tập, quản lý thời khóa biểu/lịch học. | **Must** (US-03..06) / **Should** (US-17, 18) |
 | **E3** | Quản lý Bài tập & Chấm bài Tự luận | Tạo bài tập có hạn nộp (deadline), sinh viên nộp bài đính kèm tệp, giảng viên chấm điểm (thang điểm 10) và phản hồi. | **Must** |
 | **E4** | Thi Trắc nghiệm & Chấm tự động | Ngân hàng câu hỏi, tạo đề thi giới hạn thời gian, sinh viên làm bài, hệ thống tự động chấm điểm và công bố kết quả. | **Must** |
 | **E5** | Bảng điểm & Thống kê cá nhân | Sinh viên xem bảng điểm cá nhân; Giảng viên xem và xuất bảng điểm tổng hợp khóa học. | **Must** (US-13) / **Should** (US-14) |
@@ -295,6 +295,84 @@ Feature: Xem va tai tai lieu bai giang
     Then He thong kiem tra quyen thanh vien
     And He thong tra ve ma loi HTTP 403 Forbidden
     And He thong hien thi thong bao "Ban khong co quyen truy cap tai lieu nay"
+```
+
+---
+
+#### US-17: Giảng viên thiết lập và quản lý lịch học (Should)
+> **As a** Giảng viên,  
+> **I want to** tạo và quản lý lịch học (ngày học, giờ bắt đầu, giờ kết thúc, phòng học hoặc đường dẫn học trực tuyến, chủ đề buổi học),  
+> **So that** sinh viên trong lớp nắm được thời gian và địa điểm học tập cụ thể.
+
+*Quy tắc nghiệp vụ liên quan: BR-03, BR-19*
+
+```gherkin
+Feature: Thiet lap va quan ly lich hoc
+
+  Background:
+    Given Giang vien "gv_mai" dang quan ly khoa hoc "CS101"
+    And Giang vien o man hinh "Quan ly lich hoc"
+
+  Scenario: Tao buoi hoc moi thanh cong
+    When Giang vien nhan nut "Them buoi hoc"
+    And Giang vien nhap tieu de "Buoi 1: Gioi thieu mon hoc va moi truong lap trinh"
+    And Giang vien chon ngay hoc la "2026-11-10"
+    And Giang vien chon gio bat dau "08:00" va gio ket thuc "11:30"
+    And Giang vien nhap phong hoc "Phong may B302"
+    And Giang vien nhan nut "Luu lich hoc"
+    Then He thong luu thong tin buoi hoc vao khoa hoc "CS101"
+    And He thong hien thi thong bao "Tao lich hoc thanh cong"
+    And Buoi hoc xuat hien trong danh sach lich hoc cua lop
+
+  Scenario Outline: Tao buoi hoc that bai do thoi gian khong hop le
+    When Giang vien nhan nut "Them buoi hoc"
+    And Giang vien nhap gio bat dau "<start_time>" va gio ket thuc "<end_time>"
+    And Giang vien nhan nut "Luu lich hoc"
+    Then He thong tu choi luu lich hoc
+    And He thong hien thi thong bao loi "<error_message>"
+
+    Examples:
+      | start_time | end_time | error_message                                      |
+      | 10:00      | 09:00    | Gio ket thuc phai sau gio bat dau                  |
+      | 08:00      | 08:00    | Gio ket thuc phai sau gio bat dau                  |
+      |            | 11:00    | Vui long nhap day du gio bat dau va gio ket thuc   |
+
+  Scenario: Canh bao khi tao buoi hoc trung gio voi buoi hoc da co trong cung khoa hoc
+    Given Khoa hoc "CS101" da co buoi hoc vao ngay "2026-11-10" tu "08:00" den "11:30"
+    When Giang vien tao them buoi hoc khac cung vao ngay "2026-11-10" tu "09:00" den "12:00"
+    And Giang vien nhan nut "Luu lich hoc"
+    Then He thong kiem tra xung dot thoi gian
+    And He thong tu choi luu va thong bao loi "Khung gio bi trung voi buoi hoc da ton tai tren he thong"
+```
+
+---
+
+#### US-18: Sinh viên xem thời khóa biểu và lịch học (Should)
+> **As a** Sinh viên,  
+> **I want to** xem danh sách các buổi học và thời khóa biểu của các khóa học mà mình tham gia,  
+> **So that** tôi chủ động sắp xếp thời gian đi học đúng giờ.
+
+*Quy tắc nghiệp vụ liên quan: BR-05, BR-20*
+
+```gherkin
+Feature: Xem thoi khoa bieu va lich hoc
+
+  Background:
+    Given Sinh vien "sv_nam" da ghi danh vao khoa hoc "CS101"
+    And Khoa hoc "CS101" co lich hoc ngay "2026-11-10" tu "08:00" den "11:30" tai "Phong may B302"
+
+  Scenario: Sinh vien xem lich hoc cua khoa hoc thanh cong
+    When Sinh vien truy cap vao muc "Lich hoc" trong khoa hoc "CS101"
+    Then He thong hien thi danh sach cac buoi hoc sap dien ra
+    And Thong tin hien thi day du: Ngay hoc, Khung gio, Phong hoc/Link hoc, Chu de buoi hoc
+    And Buoi hoc sap toi nhat duoc lam noi bat tren giao dien
+
+  Scenario: Sinh vien chua ghi danh co tinh xem lich hoc chi tiet (Chong IDOR)
+    Given Sinh vien "sv_la" chua tung ghi danh vao khoa hoc "CS101"
+    When Sinh vien "sv_la" gui request GET "/api/courses/CS101/schedules"
+    Then He thong kiem tra quyen thanh vien
+    And He thong tra ve ma loi HTTP 403 Forbidden
+    And He thong hien thi thong bao "Ban can ghi danh khoa hoc de xem thoi khoa bieu chi tiet"
 ```
 
 ---
@@ -678,6 +756,8 @@ Feature: Thao luan bai hoc
 - **BR-16 (Xuất dữ liệu an toàn):** Tệp CSV/Excel xuất ra phải lọc và escape các ký tự khởi đầu bằng `=`, `+`, `-`, `@` để ngăn ngừa lỗ hổng CSV Injection.
 - **BR-17 (Quyền thông báo):** Chỉ Giảng viên phụ trách khóa học và Admin mới có quyền tạo hoặc xóa thông báo trên bảng tin.
 - **BR-18 (Kiểm soát nội dung thảo luận):** Mọi nội dung text nhập từ người dùng (bình luận, tên bài, mô tả) đều phải được lọc (sanitization) chống XSS trước khi hiển thị.
+- **BR-19 (Quy định Lịch học):** Mỗi buổi học phải có ngày học, thời gian bắt đầu và thời gian kết thúc hợp lệ (`start_time < end_time`). Hệ thống kiểm tra và ngăn chặn việc tạo các buổi học bị trùng lặp hoặc chồng chéo khung giờ trong cùng một khóa học.
+- **BR-20 (Quyền xem Lịch học):** Chỉ Giảng viên phụ trách và Sinh viên đã ghi danh thành công vào khóa học mới có quyền xem thông tin chi tiết lịch học, phòng học hoặc đường link học trực tuyến của khóa học đó.
 
 ---
 
@@ -736,6 +816,8 @@ Dưới đây là 22 kịch bản biên và rủi ro kỹ thuật - nghiệp v�
 | **EC-20** | Trạng thái biên | US-08 | **Tên tệp nộp bài có ký tự đặc biệt / tiếng Việt có dấu:** Tên tệp như `Báo Cáo #1 (Tập 2) !@.pdf` gây lỗi đường dẫn lưu trữ. | **Thấp** | Đổi tên tệp lưu trên ổ đĩa thành UUID dạng chuỗi thuần; chỉ lưu tên tệp gốc của sinh viên vào trường `original_filename` trong database. |
 | **EC-21** | Hiệu năng | US-14 | **Truy vấn N+1 khi load bảng điểm cả lớp:** Lấy danh sách 50 sinh viên kèm bài nộp gây ra 50 câu query con làm chậm hệ thống. | **Thấp** | Thiết kế query tối ưu bằng cách sử dụng `JOIN` hoặc `Eager Loading` kèm phân trang hợp lý (20-30 sinh viên/trang). |
 | **EC-22** | Nghiệp vụ | US-04 | **Brute-force mã ghi danh khóa học (Enrollment Key):** Kẻ xấu viết script thử ngẫu nhiên mã khóa học để vào lớp trái phép. | **Thấp** | Áp dụng mã ghi danh độ dài tối thiểu 6 ký tự gồm chữ và số; giới hạn tần suất nhập sai mã ghi danh (tối đa 5 lần thử/phút/IP). |
+| **EC-23** | Nghiệp vụ | US-17 | **Trùng lặp lịch học trong cùng khóa học:** Giảng viên vô tình xếp 2 buổi học trùng khung giờ vào cùng một ngày. | **Trung bình** | Backend kiểm tra xung đột thời gian (`start_time`, `end_time`, `date`) trước khi lưu; nếu trùng thì chặn và báo lỗi cụ thể (BR-19). |
+| **EC-24** | Nghiệp vụ | US-17, US-18 | **Giảng viên đổi lịch hoặc hủy buổi học:** Sinh viên không biết buổi học đã bị đổi lịch/hủy. | **Trung bình** | Cho phép Giảng viên cập nhật trạng thái buổi học (`SCHEDULED`, `RESCHEDULED`, `CANCELLED`); khi đổi lịch hệ thống tự động gắn nhãn thông báo nổi bật trên thời khóa biểu của sinh viên. |
 
 ---
 
@@ -792,7 +874,9 @@ Dưới đây là 22 kịch bản biên và rủi ro kỹ thuật - nghiệp v�
 | **FR-14** | Giảng viên xem và xuất bảng điểm lớp học | US-14 | E5 | Should | 2 | EC-17, EC-21 |
 | **FR-15** | Đăng và nhận thông báo khóa học | US-15 | E6 | Should | 2 | EC-11 |
 | **FR-16** | Diễn đàn thảo luận bài học | US-16 | E6 | Should | 2 | EC-11 |
-| **Tổng cộng** | **16 Yêu cầu chức năng (FR)** | **16 US** | **6 Epics** | **13 Must, 3 Should** | **39 Scenarios** | **22 ECs** |
+| **FR-17** | Giảng viên thiết lập và quản lý lịch học | US-17 | E2 | Should | 3 | EC-23, EC-24 |
+| **FR-18** | Sinh viên xem thời khóa biểu & lịch học | US-18 | E2 | Should | 2 | EC-24 |
+| **Tổng cộng** | **18 Yêu cầu chức năng (FR)** | **18 US** | **6 Epics** | **13 Must, 5 Should** | **44 Scenarios** | **24 ECs** |
 
 ---
 
@@ -809,9 +893,9 @@ Dưới đây là 22 kịch bản biên và rủi ro kỹ thuật - nghiệp v�
 +----------------------------+----------------------------+-------------------------------+
 | - Epic E1: Auth & User     | - Epic E3: Bài tập tự luận | - Epic E4: Đề thi trắc nghiệm |
 |   (Đăng nhập, RBAC, Admin) |   (Tạo BT, Deadline, Nộp)  |   (Tạo đề, ngân hàng câu hỏi) |
-| - Epic E2: Khóa học & Bài  | - Epic E3: Chấm điểm tự    | - Epic E4: Thi trực tuyến &   |
-|   giảng (Ghi danh, Upload/ |   luận & Phản hồi          |   chấm điểm tự động           |
-|   Download tài liệu)       | - Epic E5: Bảng điểm cá    | - Epic E6: Bảng tin thông     |
+| - Epic E2: Khóa học, Bài   | - Epic E3: Chấm điểm tự    | - Epic E4: Thi trực tuyến &   |
+|   giảng & Lịch học (Ghi    |   luận & Phản hồi          |   chấm điểm tự động           |
+|   danh, Tài liệu, Lịch)    | - Epic E5: Bảng điểm cá    | - Epic E6: Bảng tin thông     |
 | - Hạ tầng Base & Phân      |   nhân & Xuất file CSV     |   báo & Thảo luận bài học     |
 |   quyền chung              | - Kiểm soát an toàn file   | - Cơ chế Auto-save & Timer    |
 +----------------------------+----------------------------+-------------------------------+
@@ -820,13 +904,14 @@ Dưới đây là 22 kịch bản biên và rủi ro kỹ thuật - nghiệp v�
 ### Chi tiết phân công:
 
 #### 1. Sinh viên 1: Module Nền tảng, Xác thực & Quản lý Khóa học
-- **Phạm vi phụ trách:** Epic E1 (US-01, US-02) và Epic E2 (US-03, US-04, US-05, US-06).
+- **Phạm vi phụ trách:** Epic E1 (US-01, US-02) và Epic E2 (US-03, US-04, US-05, US-06, US-17, US-18).
 - **Đầu việc cụ thể:**
-  - Thiết kế cấu trúc cơ sở dữ liệu cho User, Role, Course, Enrollment, Lesson, Material.
+  - Thiết kế cấu trúc cơ sở dữ liệu cho User, Role, Course, Enrollment, Lesson, Material, Schedule/Session.
   - Xây dựng luồng xác thực (Authentication), phân quyền (Authorization - RBAC), cơ chế chống brute-force đăng nhập.
   - Quản lý khóa học, sinh mã ghi danh (Enrollment Key), xác thực ghi danh của sinh viên.
   - Quản lý tài liệu bài giảng, upload và stream tải tài liệu an toàn.
-- **Tiêu chí hoàn thành (DoD):** Chạy thông suốt kịch bản (1): Giảng viên tạo khóa học, tải bài giảng; sinh viên ghi danh và tải tài liệu học.
+  - Quản lý lịch học khóa học: tạo lịch học, kiểm tra xung đột thời gian, thời khóa biểu cho sinh viên.
+- **Tiêu chí hoàn thành (DoD):** Chạy thông suốt kịch bản (1): Giảng viên tạo khóa học, tải bài giảng, thiết lập lịch học; sinh viên ghi danh, xem thời khóa biểu và tải tài liệu học.
 
 #### 2. Sinh viên 2: Module Bài tập Tự luận & Bảng điểm
 - **Phạm vi phụ trách:** Epic E3 (US-07, US-08, US-09) và Epic E5 (US-13, US-14).
