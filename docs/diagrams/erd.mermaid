@@ -1,0 +1,252 @@
+erDiagram
+    ROLES ||--o{ USERS : "has"
+    USERS ||--o{ REFRESH_TOKENS : "owns"
+    USERS ||--o{ COURSES : "instructs"
+    USERS ||--o{ ENROLLMENTS : "joins"
+    USERS ||--o{ SUBMISSIONS : "submits"
+    USERS ||--o{ GRADES : "grades"
+    USERS ||--o{ ATTEMPTS : "takes"
+    USERS ||--o{ ANNOUNCEMENTS : "posts"
+    USERS ||--o{ DISCUSSIONS : "writes"
+    USERS ||--o{ NOTIFICATIONS : "receives"
+
+    COURSES ||--o{ ENROLLMENTS : "has"
+    COURSES ||--o{ LESSONS : "contains"
+    COURSES ||--o{ SCHEDULES : "schedules"
+    COURSES ||--o{ ASSIGNMENTS : "assigns"
+    COURSES ||--o{ QUIZZES : "holds"
+    COURSES ||--o{ ANNOUNCEMENTS : "publishes"
+    COURSES ||--o{ DISCUSSIONS : "hosts"
+
+    LESSONS ||--o{ MATERIALS : "attaches"
+    LESSONS ||--o{ DISCUSSIONS : "threads"
+
+    ASSIGNMENTS ||--o{ SUBMISSIONS : "receives"
+    SUBMISSIONS ||--o| GRADES : "evaluated_by"
+
+    QUIZZES ||--o{ QUESTIONS : "contains"
+    QUIZZES ||--o{ ATTEMPTS : "evaluated_in"
+
+    QUESTIONS ||--o{ OPTIONS : "has"
+    QUESTIONS ||--o{ ATTEMPT_ANSWERS : "answered_as"
+
+    ATTEMPTS ||--o{ ATTEMPT_ANSWERS : "records"
+    OPTIONS ||--o{ ATTEMPT_ANSWERS : "selected_in"
+
+    ROLES {
+        int id PK
+        string name "ADMIN, GIANG_VIEN, SINH_VIEN"
+        string description
+        datetime created_at
+    }
+
+    USERS {
+        bigint id PK
+        int role_id FK
+        string username UK
+        string email UK
+        string password_hash
+        string full_name
+        string status "ACTIVE, LOCKED, TEMPORARY_LOCKED"
+        int failed_login_attempts
+        datetime lockout_until
+        int token_version
+        boolean must_change_password
+        datetime created_at
+        datetime updated_at
+        datetime deleted_at
+    }
+
+    REFRESH_TOKENS {
+        bigint id PK
+        bigint user_id FK
+        string token_hash UK
+        datetime expires_at
+        datetime created_at
+    }
+
+    COURSES {
+        bigint id PK
+        string code
+        string title
+        text description
+        string semester
+        bigint instructor_id FK
+        string enrollment_key UK "COLLATE utf8mb4_bin"
+        string status "DRAFT, PUBLISHED, ARCHIVED"
+        datetime created_at
+        datetime updated_at
+        datetime deleted_at
+    }
+
+    ENROLLMENTS {
+        bigint id PK
+        bigint course_id FK
+        bigint student_id FK
+        datetime enrolled_at
+    }
+
+    LESSONS {
+        bigint id PK
+        bigint course_id FK
+        string title
+        text content
+        int order_index
+        datetime created_at
+        datetime updated_at
+    }
+
+    MATERIALS {
+        bigint id PK
+        bigint lesson_id FK
+        string title
+        string original_filename
+        string file_uuid UK
+        string file_path
+        bigint file_size_bytes
+        string mime_type
+        datetime uploaded_at
+    }
+
+    SCHEDULES {
+        bigint id PK
+        bigint course_id FK
+        string title
+        date date
+        time start_time
+        time end_time
+        string room_or_link
+        string status "SCHEDULED, RESCHEDULED, CANCELLED"
+        datetime created_at
+        datetime updated_at
+    }
+
+    ASSIGNMENTS {
+        bigint id PK
+        bigint course_id FK
+        string title
+        text description
+        datetime deadline
+        decimal max_score
+        boolean allow_late
+        string status "OPEN, CLOSED"
+        datetime created_at
+        datetime updated_at
+        datetime deleted_at
+    }
+
+    SUBMISSIONS {
+        bigint id PK
+        bigint assignment_id FK
+        bigint student_id FK
+        string original_filename
+        string file_uuid UK
+        string file_path
+        bigint file_size_bytes
+        string mime_type
+        datetime submitted_at
+        boolean is_late
+        int late_minutes
+        int submission_count
+        string status "SUBMITTED, SUBMITTED_LATE, GRADED"
+        datetime created_at
+        datetime updated_at
+    }
+
+    GRADES {
+        bigint id PK
+        bigint submission_id FK,UK
+        bigint graded_by FK
+        decimal score "0.00 to 10.00"
+        text feedback
+        datetime graded_at
+        datetime updated_at
+    }
+
+    QUIZZES {
+        bigint id PK
+        bigint course_id FK
+        string title
+        text description
+        int duration_minutes
+        datetime open_time
+        datetime close_time
+        boolean show_score_immediately
+        string status "DRAFT, PUBLISHED, CLOSED"
+        boolean has_attempts
+        datetime created_at
+        datetime updated_at
+        datetime deleted_at
+    }
+
+    QUESTIONS {
+        bigint id PK
+        bigint quiz_id FK
+        text content
+        int order_index
+        datetime created_at
+    }
+
+    OPTIONS {
+        bigint id PK
+        bigint question_id FK
+        text content
+        boolean is_correct
+        int order_index
+    }
+
+    ATTEMPTS {
+        bigint id PK
+        bigint quiz_id FK
+        bigint student_id FK
+        string session_token
+        datetime started_at
+        datetime expires_at
+        datetime submitted_at
+        int total_questions
+        int correct_answers_count
+        decimal score "0.00 to 10.00"
+        string status "IN_PROGRESS, SUBMITTED, AUTO_SUBMITTED"
+        datetime created_at
+        datetime updated_at
+    }
+
+    ATTEMPT_ANSWERS {
+        bigint id PK
+        bigint attempt_id FK
+        bigint question_id FK
+        bigint selected_option_id FK
+        datetime saved_at
+    }
+
+    ANNOUNCEMENTS {
+        bigint id PK
+        bigint course_id FK
+        bigint author_id FK
+        string title
+        text content
+        datetime created_at
+        datetime updated_at
+    }
+
+    DISCUSSIONS {
+        bigint id PK
+        bigint course_id FK
+        bigint lesson_id FK
+        bigint author_id FK
+        text content
+        datetime created_at
+        datetime updated_at
+    }
+
+    NOTIFICATIONS {
+        bigint id PK
+        bigint user_id FK
+        bigint course_id FK
+        string title
+        text content
+        string type
+        boolean is_read
+        datetime created_at
+    }
+

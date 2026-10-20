@@ -1,0 +1,92 @@
+stateDiagram-v2
+    %% ==========================================
+    %% 1. TRẠNG THÁI TÀI KHOẢN NGƯỜI DÙNG (USER)
+    %% ==========================================
+    [*] --> User_Active : Admin tạo tài khoản (mặc định ACTIVE)
+    
+    state User_Active {
+        [*] --> NormalOperation
+        NormalOperation --> FailedAttempt : Nhập sai mật khẩu
+        FailedAttempt --> NormalOperation : Đăng nhập đúng (reset biến đếm)
+    }
+
+    User_Active --> User_TempLocked : Nhập sai 5 lần liên tiếp trong 10 phút (BR-02)
+    User_TempLocked --> User_Active : Hết 15 phút khóa tạm (server tự giải phóng)
+
+    User_Active --> User_Locked : Admin chủ động khóa tài khoản (US-02)
+    User_TempLocked --> User_Locked : Admin chủ động khóa
+    User_Locked --> User_Active : Admin mở khóa tài khoản
+
+    User_Active --> User_SoftDeleted : Admin xóa tài khoản (deleted_at IS NOT NULL)
+    User_Locked --> User_SoftDeleted : Admin xóa tài khoản
+    User_SoftDeleted --> [*]
+
+    %% ==========================================
+    %% 2. TRẠNG THÁI KHÓA HỌC (COURSE)
+    %% ==========================================
+    [*] --> Course_Draft : Giảng viên tạo mới khóa học
+    Course_Draft --> Course_Published : Giảng viên xuất bản (Mở ghi danh bằng mã)
+    Course_Published --> Course_Archived : Kết thúc học kỳ / Chuyển sang chỉ đọc
+    Course_Draft --> Course_SoftDeleted : Hủy khi chưa có sinh viên (deleted_at)
+    Course_Archived --> [*]
+
+    %% ==========================================
+    %% 3. TRẠNG THÁI BÀI TẬP VÀ BÀI NỘP (SUBMISSION)
+    %% ==========================================
+    [*] --> Sub_NotSubmitted : Bài tập ở trạng thái OPEN
+
+    Sub_NotSubmitted --> Sub_Submitted : Nộp trước hoặc đúng deadline
+    Sub_NotSubmitted --> Sub_SubmittedLate : Nộp sau deadline (khi allow_late = TRUE)
+
+    Sub_Submitted --> Sub_Submitted : Nộp lại trước deadline (tăng submission_count)
+    Sub_SubmittedLate --> Sub_SubmittedLate : Nộp lại sau deadline (cập nhật late_minutes)
+
+    Sub_Submitted --> Sub_Graded : Giảng viên chấm điểm & nhập nhận xét
+    Sub_SubmittedLate --> Sub_Graded : Giảng viên chấm điểm & xem xét trừ điểm trễ
+
+    Sub_Graded --> Sub_Graded : Giảng viên cập nhật lại điểm (phúc khảo)
+    Sub_Graded --> [*]
+
+    %% ==========================================
+    %% 4. TRẠNG THÁI ĐỀ THI TRẮC NGHIỆM (QUIZ)
+    %% ==========================================
+    [*] --> Quiz_Draft : Giảng viên soạn đề thi & câu hỏi
+    Quiz_Draft --> Quiz_Published : Xuất bản đề thi (chờ đến open_time)
+    Quiz_Published --> Quiz_Closed : Quá close_time hoặc GV chủ động đóng đề
+    Quiz_Draft --> Quiz_SoftDeleted : Xóa đề thi nháp (deleted_at)
+    Quiz_Closed --> [*]
+
+    %% ==========================================
+    %% 5. TRẠNG THÁI LƯỢT THI TRẮC NGHIỆM (ATTEMPT)
+    %% ==========================================
+    [*] --> Attempt_InProgress : Sinh viên nhấn "Bắt đầu làm bài"
+
+    state Attempt_InProgress {
+        [*] --> ChoosingAnswer
+        ChoosingAnswer --> AutoSavingAnswer : Gửi API lưu tạm đáp án ngầm
+        AutoSavingAnswer --> ChoosingAnswer : Tiếp tục làm bài
+    }
+
+    Attempt_InProgress --> Attempt_Submitted : Sinh viên chủ động nộp bài trước khi hết giờ
+    Attempt_InProgress --> Attempt_AutoSubmitted : Hết thời gian làm bài (Client submit hoặc Server Cron quét)
+
+    state Transaction_Grading {
+        [*] --> GradeCalculation : Chấm điểm tự động và lưu DB Transaction
+    }
+
+    Attempt_Submitted --> Transaction_Grading
+    Attempt_AutoSubmitted --> Transaction_Grading
+
+    Transaction_Grading --> [*] : Hoàn tất lượt thi & ghi nhận điểm
+
+    %% ==========================================
+    %% 6. TRẠNG THÁI BUỔI HỌC / LỊCH HỌC (SCHEDULE)
+    %% ==========================================
+    [*] --> Schedule_Scheduled : Giảng viên tạo buổi học
+    Schedule_Scheduled --> Schedule_Rescheduled : Giảng viên đổi giờ hoặc đổi phòng học
+    Schedule_Rescheduled --> Schedule_Rescheduled : Cập nhật lại thời gian mới
+    Schedule_Scheduled --> Schedule_Cancelled : Giảng viên hủy buổi học (gửi thông báo)
+    Schedule_Rescheduled --> Schedule_Cancelled : Hủy buổi học đã dời lịch
+    Schedule_Cancelled --> [*]
+    Schedule_Scheduled --> [*] : Buổi học đã hoàn thành
+

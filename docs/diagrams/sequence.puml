@@ -1,0 +1,851 @@
+' =============================================================================
+' HỆ THỐNG QUẢN LÝ HỌC TẬP (LMS MINI) - PLANTUML SEQUENCE DIAGRAMS
+' Chứa 16 sơ đồ tuần tự chi tiết tương ứng với các luồng nghiệp vụ cốt lõi
+' =============================================================================
+
+@startuml
+title US-01: Dang nhap he thong, Khoa tam thoi, Rate Limit & RBAC
+autonumber
+actor User as "Nguoi dung\n(Admin/GV/SV)"
+participant FE as "Frontend SPA\n(React)"
+participant RL as "RateLimiter\n(Middleware)"
+participant AC as "AuthController"
+participant AS as "AuthService"
+participant UR as "UserRepository"
+database DB as "MySQL DB"
+
+User -> FE : Nhap username, password -> Bam "Dang nhap"
+FE -> RL : POST /api/auth/login { username, password }
+
+alt Vuot qua Rate Limit (qua 5 request/phut tu 1 IP)
+    RL --> FE : 429 Too Many Requests { message: "Qua nhieu lan thu, vui long doi 1 phut" }
+    FE --> User : Hien thi thong bao gioi han request
+else Rate Limit hop le
+    RL -> AC : Chuyen tiep request
+    AC -> AS : login(username, password)
+    AS -> UR : findByUsername(username)
+    UR -> DB : SELECT * FROM users WHERE username = ?
+    DB --> UR : User record / null
+
+    alt Tai khoan khong ton tai
+        AS --> AC : Error: InvalidCredentials
+        AC --> FE : 401 Unauthorized { message: "Ten dang nhap hoac mat khau khong dung" }
+        FE --> User : Thong bao loi sai thong tin
+    else Tai khoan dang bi khoa (status = 'LOCKED')
+        AS --> AC : Error: AccountLocked
+        AC --> FE : 403 Forbidden { message: "Tai khoan bi khoa. Lien he Admin" }
+        FE --> User : Thong bao tai khoan bi khoa
+    else Tai khoan dang bi tam khoa (status = 'TEMPORARY_LOCKED')
+        alt lockout_until > NOW()
+            AS --> AC : Error: AccountTempLocked
+            AC --> FE : 403 Forbidden { message: "Tai khoan bi tam khoa 15 phut" }
+            FE --> User : Thong bao thoi gian con lai
+        else lockout_until <= NOW() (Da het 15 phut)
+            AS -> UR : resetLockout(userId)
+            UR -> DB : UPDATE users SET status='ACTIVE', failed_attempts=0 WHERE id=?
+        end
+    else Kiem tra mat khau
+        AS -> AS : bcrypt.compare(password, password_hash)
+        alt Sai mat khau
+            AS -> UR : incrementFailedAttempts(userId)
+            UR -> DB : UPDATE users SET failed_attempts = failed_attempts + 1
+            alt failed_attempts >= 5 (BR-02, EC-08)
+                AS -> UR : lockTemporarily(userId, 15_MINUTES)
+                UR -> DB : UPDATE users SET status='TEMPORARY_LOCKED', lockout_until=NOW()+INTERVAL 15 MINUTE
+                AS --> AC : Error: ReachedMaxAttempts
+                AC --> FE : 403 Forbidden { message: "Nhap sai 5 lan. Tam khoa 15 phut" }
+            else failed_attempts < 5
+                AS --> AC : Error: InvalidCredentials
+                AC --> FE : 401 Unauthorized { message: "Ten dang nhap hoac mat khau khong dung" }
+            end
+            FE --> User : Hien thi thong bao sai mat khau
+        else Mat khau dung
+            AS -> UR : resetFailedAttempts(userId)
+            UR -> DB : UPDATE users SET failed_attempts=0, lockout_until=NULL
+            AS -> AS : Tao Access Token JWT (expiresIn: 15m, payload: id, role, token_version)
+            AS -> AS : Tao Refresh Token ngau nhien (expiresIn: 7d)
+            AS -> UR : saveRefreshToken(userId, tokenHash, expiresAt)
+            UR -> DB : INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (...)
+            AS --> AC : { accessToken, refreshToken, user: { id, role, must_change_password } }
+            AC --> FE : 200 OK { token, user }
+            FE --> User : Chuyen huong vao Dashboard theo Role
+        end
+    end
+end
+@enduml
+
+@startuml
+title US-02: Admin tao va khoa tai khoan, thu hoi phien tuc thi
+autonumber
+actor Admin as "Admin"
+participant FE as "Frontend SPA"
+participant MW as "Auth & RBAC Middleware"
+participant UC as "UserController"
+participant US as "UserService"
+participant UR as "UserRepository"
+database DB as "MySQL DB"
+
+== Admin tao tai khoan moi ==
+Admin -> FE : Nhap fullName, email, username, role -> Bam "Luu"
+FE -> MW : POST /api/admin/users { fullName, email, username, roleId }
+MW -> MW : Kiem tra JWT & verify role == 'ADMIN'
+MW -> UC : Chuyen tiep request
+UC -> US : createUser(userData)
+US -> UR : checkExists(username, email)
+UR -> DB : SELECT id FROM users WHERE username = ? OR email = ?
+
+alt Da ton tai username hoac email
+    DB --> UR : Co ban ghi
+    US --> UC : Error: DuplicateUser
+    UC --> FE : 409 Conflict { message: "Ten dang nhap hoac email da ton tai" }
+    FE --> Admin : Bao loi trung lap
+else Thong tin hop le
+    US -> US : Sinh mat khau ngau nhien mac dinh & Hash bcrypt
+    US -> UR : insertUser(userData, passwordHash, must_change_password=TRUE)
+    UR -> DB : INSERT INTO users (...) VALUES (...)
+    DB --> UR : user_id
+    US --> UC : { id, username, email, role }
+    UC --> FE : 201 Created { message: "Tao tai khoan thanh cong" }
+    FE --> Admin : Hien thi tai khoan tren danh sach
+end
+
+== Admin khoa tai khoan & Thu hoi phien tuc thi (EC-14, US-02) ==
+Admin -> FE : Bam "Khoa tai khoan" cho user "sv_quayroi"
+FE -> MW : PATCH /api/admin/users/{id}/status { status: 'LOCKED' }
+MW -> UC : Chuyen tiep
+UC -> US : updateUserStatus(userId, 'LOCKED')
+US -> UR : lockUserAndRevokeSessions(userId)
+note over US, DB
+  Transaction: Tang token_version de vo hieu hoa JWT hien tai
+  va xoa sach Refresh Tokens trong DB
+end note
+UR -> DB : BEGIN TRANSACTION
+UR -> DB : UPDATE users SET status = 'LOCKED', token_version = token_version + 1 WHERE id = ?
+UR -> DB : DELETE FROM refresh_tokens WHERE user_id = ?
+UR -> DB : COMMIT
+US --> UC : Success
+UC --> FE : 200 OK { message: "Da khoa tai khoan va thu hoi moi phien lam viec" }
+FE --> Admin : Cap nhat trang thai sang LOCKED
+@enduml
+
+@startuml
+title US-03: Giang vien tao va xuat ban khoa hoc
+autonumber
+actor GV as "Giang vien"
+participant FE as "Frontend SPA"
+participant MW as "Auth & RBAC Middleware"
+participant CC as "CourseController"
+participant CS as "CourseService"
+participant CR as "CourseRepository"
+database DB as "MySQL DB"
+
+GV -> FE : Nhap ma mon, ten mon, hoc ky, chon "Yeu cau ma" -> Bam "Tao"
+FE -> MW : POST /api/courses { code, title, semester, customKey }
+MW -> MW : Verify role == 'GIANG_VIEN'
+MW -> CC : Chuyen tiep (instructorId = req.user.id)
+CC -> CS : createCourse(instructorId, courseData)
+
+CS -> CS : Sinh ngau nhien ma enrollment_key 6 ky tu in hoa/so (hoac kiem tra customKey 6-8 ky tu)
+CS -> CR : checkKeyUnique(enrollment_key)
+CR -> DB : SELECT id FROM courses WHERE enrollment_key = ?
+DB --> CR : Null (Chua ton tai)
+
+CS -> CR : insertCourse(code, title, semester, instructorId, enrollment_key, status='DRAFT')
+CR -> DB : INSERT INTO courses (...) VALUES (...)
+DB --> CR : course_id
+CS --> CC : Course object (status: 'DRAFT')
+CC --> FE : 201 Created { course }
+FE --> GV : Hien thi khoa hoc o trang thai DRAFT
+
+== Xuat ban khoa hoc ==
+GV -> FE : Bam "Xuat ban khoa hoc"
+FE -> MW : PATCH /api/courses/{id}/publish
+MW -> CC : Chuyen tiep
+CC -> CS : publishCourse(courseId, instructorId)
+CS -> CR : findById(courseId)
+CR -> DB : SELECT * FROM courses WHERE id = ?
+DB --> CR : course
+
+alt Khong phai chu so huu khoa hoc (EC-01)
+    CS --> CC : Error: Forbidden
+    CC --> FE : 403 Forbidden { message: "Ban khong co quyen xuat ban khoa hoc nay" }
+else Dung giang vien chu so huu
+    CS -> CR : updateStatus(courseId, 'PUBLISHED')
+    CR -> DB : UPDATE courses SET status = 'PUBLISHED' WHERE id = ?
+    CS --> CC : Success
+    CC --> FE : 200 OK { message: "Xuat ban khoa hoc thanh cong, da mo ghi danh" }
+    FE --> GV : Cap nhat giao dien sang PUBLISHED
+end
+@enduml
+
+@startuml
+title US-04: Sinh vien ghi danh khoa hoc bang Enrollment Key
+autonumber
+actor SV as "Sinh vien"
+participant FE as "Frontend SPA"
+participant RL as "RateLimiter"
+participant MW as "Auth Middleware"
+participant EC as "EnrollmentController"
+participant ES as "EnrollmentService"
+participant ER as "EnrollmentRepository"
+database DB as "MySQL DB"
+
+SV -> FE : Nhap ma ghi danh (VD: WEB2026) -> Bam "Tham gia"
+FE -> RL : POST /api/courses/enroll { enrollment_key: "WEB2026" }
+
+alt Vuot qua 5 lan thu/phut/IP (EC-22)
+    RL --> FE : 429 Too Many Requests { message: "Thu ma qua nhieu lan, vui long thu lai sau" }
+else Rate Limit hop le
+    RL -> MW : Chuyen tiep
+    MW -> MW : Verify JWT sinh vien (studentId = req.user.id)
+    MW -> EC : Chuyen tiep
+    EC -> ES : enrollByCode(studentId, "WEB2026")
+    ES -> ER : findPublishedCourseByKey("WEB2026")
+    ER -> DB : SELECT id, title, status FROM courses WHERE enrollment_key = BINARY 'WEB2026'
+
+    alt Ma khong ton tai hoac status != 'PUBLISHED'
+        DB --> ER : Null
+        ES --> EC : Error: CourseNotFound
+        EC --> FE : 404 Not Found { message: "Ma ghi danh khong dung hoac khoa hoc chua xuat ban" }
+        FE --> SV : Bao loi ma ghi danh
+    else Tim thay khoa hoc
+        DB --> ER : course_id = 1
+        ES -> ER : checkAlreadyEnrolled(course_id, studentId)
+        ER -> DB : SELECT id FROM enrollments WHERE course_id = ? AND student_id = ?
+        
+        alt Da la thanh vien tu truoc
+            DB --> ER : Enrollment record
+            ES --> EC : Error: AlreadyEnrolled
+            EC --> FE : 409 Conflict { message: "Ban da la thanh vien cua khoa hoc nay", courseId: 1 }
+            FE --> SV : Canh bao & chuyen thang vao khoa hoc
+        else Chua ghi danh
+            DB --> ER : Null
+            ES -> ER : createEnrollment(course_id, studentId)
+            ER -> DB : INSERT INTO enrollments (course_id, student_id, enrolled_at) VALUES (1, ?, NOW())
+            ES --> EC : Success
+            EC --> FE : 201 Created { message: "Ghi danh thanh cong", courseId: 1 }
+            FE --> SV : Thong bao thanh cong va dua khoa hoc vao "Khoa hoc cua toi"
+        end
+    end
+end
+@enduml
+
+@startuml
+title US-05: Giang vien tai len tai lieu bai giang (Upload an toan)
+autonumber
+actor GV as "Giang vien"
+participant FE as "Frontend SPA"
+participant MW as "Auth & Upload Middleware"
+participant MC as "MaterialController"
+participant MS as "MaterialService"
+participant FS as "File Storage (Disk)"
+participant MR as "MaterialRepository"
+database DB as "MySQL DB"
+
+GV -> FE : Chon bai hoc, nhap tieu de, chon tep (VD: slide.pdf 5MB) -> Bam "Dang tai"
+FE -> MW : POST /api/lessons/{id}/materials (Multipart/form-data)
+MW -> MW : Kiem tra JWT & Role == 'GIANG_VIEN'
+MW -> MW : Kiem tra dung luong tep <= 50MB (BR-06)
+
+alt Tep vuot qua 50MB
+    MW --> FE : 400 Bad Request { message: "Dung luong tep vuot qua 50MB" }
+    FE --> GV : Bao loi dung luong
+else Dung luong hop le
+    MW -> MW : Kiem tra Whitelist Extension & Magic bytes bang 'file-type' (NFR-07, EC-03)
+    alt Phat hien tep doc hai / sai MIME (VD: script.sh, .exe)
+        MW --> FE : 400 Bad Request { message: "Dinh dang tep khong duoc phep" }
+        FE --> GV : Bao loi loai tep bi cam
+    else Tep an toan
+        MW -> FS : Luu tep voi ten UUID ngau nhien tai /app/uploads/materials/{uuid}.pdf (BR-10)
+        FS --> MW : file_path, file_uuid, file_size_bytes
+        MW -> MC : Chuyen tiep request (kem metadata file)
+        MC -> MS : addMaterial(lessonId, gvId, fileData)
+        MS -> MR : checkLessonOwnership(lessonId, gvId)
+        MR -> DB : SELECT c.instructor_id FROM lessons l JOIN courses c ON l.course_id = c.id WHERE l.id = ?
+        DB --> MR : instructor_id == gvId
+        
+        MS -> MR : saveMaterial(lessonId, title, original_filename, file_uuid, file_path, size, mime)
+        MR -> DB : INSERT INTO materials (...) VALUES (...)
+        DB --> MR : material_id
+        MS --> MC : Material object
+        MC --> FE : 201 Created { material }
+        FE --> GV : Hien thi tai lieu tren giao dien bai hoc
+    end
+end
+@enduml
+
+@startuml
+title US-06: Sinh vien xem va tai tai lieu bai giang (Stream an toan, chong IDOR)
+autonumber
+actor SV as "Sinh vien"
+participant FE as "Frontend SPA"
+participant MW as "Auth Middleware"
+participant MC as "MaterialController"
+participant MS as "MaterialService"
+participant MR as "MaterialRepository"
+participant FS as "File Storage"
+database DB as "MySQL DB"
+
+SV -> FE : Bam vao link tai tai lieu "slides_chuong1.pdf"
+FE -> MW : GET /api/courses/{course_id}/materials/{mat_id}/download
+MW -> MW : Verify JWT token (userId = req.user.id)
+MW -> MC : Chuyen tiep request
+MC -> MS : downloadMaterial(courseId, materialId, userId)
+
+MS -> MR : checkPermission(courseId, userId)
+note over MS, DB
+  Kiem tra Sinh vien da ghi danh vao khoa hoc chua
+  HOAC nguoi goi la Giang vien so huu khoa hoc (EC-01)
+end note
+MR -> DB : SELECT id FROM enrollments WHERE course_id = ? AND student_id = ?
+DB --> MR : Null (Neu chua ghi danh)
+
+alt Khong phai thanh vien khoa hoc (Chong IDOR)
+    MS --> MC : Error: Forbidden
+    MC --> FE : 403 Forbidden { message: "Ban khong co quyen truy cap tai lieu nay" }
+    FE --> SV : Thong bao tu choi truy cap
+else La thanh vien hop le
+    MR -> DB : SELECT * FROM materials WHERE id = ?
+    DB --> MR : Material metadata (file_path, original_filename, mime_type)
+    MS --> MC : File Stream Info
+    MC -> MC : Set Header: Content-Disposition attachment; filename="slides_chuong1.pdf"
+    MC -> FS : fs.createReadStream(file_path) (EC-18)
+    FS --> MC : stream chunks
+    MC --> FE : 200 OK (Stream Binary Buffer)
+    FE --> SV : Trinh duyet tu dong luu tep "slides_chuong1.pdf"
+end
+@enduml
+
+@startuml
+title US-07: Giang vien giao bai tap tu luan va sinh thong bao tu dong
+autonumber
+actor GV as "Giang vien"
+participant FE as "Frontend SPA"
+participant MW as "Auth & RBAC Middleware"
+participant AC as "AssignmentController"
+participant AS as "AssignmentService"
+participant AR as "AssignmentRepository"
+participant NS as "NotificationService"
+database DB as "MySQL DB"
+
+GV -> FE : Nhap tieu de, yeu cau, deadline, max_score=10, bat allow_late -> Bam "Phat hanh"
+FE -> MW : POST /api/courses/{courseId}/assignments { title, description, deadline, allow_late }
+MW -> MW : Verify role == 'GIANG_VIEN'
+MW -> AC : Chuyen tiep (gvId = req.user.id)
+AC -> AS : createAssignment(courseId, gvId, data)
+
+AS -> AS : So sanh deadline voi thoi gian server hien tai
+alt Deadline trong qua khu
+    AS --> AC : Error: InvalidDeadline
+    AC --> FE : 400 Bad Request { message: "Han nop phai la mot thoi diem trong tuong lai" }
+    FE --> GV : Bao loi han nop
+else Deadline hop le
+    AS -> AR : insertAssignment(courseId, data, status='OPEN')
+    AR -> DB : INSERT INTO assignments (...) VALUES (...)
+    DB --> AR : assignment_id
+
+    == Gui thong bao tu dong cho sinh vien trong lop (Mục C.5) ==
+    AS -> NS : notifyNewAssignment(courseId, assignment_id, title, deadline)
+    NS -> DB : SELECT student_id FROM enrollments WHERE course_id = ?
+    DB --> NS : List of student_ids
+    loop Voi moi sinh vien trong lop
+        NS -> DB : INSERT INTO notifications (user_id, course_id, title, content, type) VALUES (?, ?, 'Bai tap moi: ' + title, ..., 'ASSIGNMENT_NEW')
+    end
+    
+    AS --> AC : Assignment object
+    AC --> FE : 201 Created { assignment }
+    FE --> GV : Hien thi bai tap trong khoa hoc o trang thai OPEN
+end
+@enduml
+
+@startuml
+title US-08: Sinh vien nop bai tap (Dung han, nop tre, chong double submit, nop lai)
+autonumber
+actor SV as "Sinh vien"
+participant FE as "Frontend SPA"
+participant MW as "Auth & Upload Middleware"
+participant SC as "SubmissionController"
+participant SS as "SubmissionService"
+participant SR as "SubmissionRepository"
+participant FS as "File Storage"
+database DB as "MySQL DB"
+
+SV -> FE : Chon file PDF (3MB) -> Bam "Nop bai"
+note over FE : Disable nut nop ngay lap tuc & hien thi spinner (EC-04)
+FE -> MW : POST /api/assignments/{id}/submissions (Multipart)
+MW -> MW : Verify JWT (studentId = req.user.id)
+MW -> MW : Validate file dung luong <= 20MB & MIME whitelist (BR-07, BR-10)
+MW -> FS : Luu file tam voi UUID ngau nhien
+MW -> SC : Chuyen tiep request (kem fileData)
+SC -> SS : submitAssignment(assignmentId, studentId, fileData)
+
+SS -> SR : getAssignmentWithEnrollment(assignmentId, studentId)
+SR -> DB : SELECT a.*, e.id as enrolled FROM assignments a LEFT JOIN enrollments e ON a.course_id = e.course_id AND e.student_id = ? WHERE a.id = ?
+DB --> SR : assignment record
+
+alt Sinh vien chua ghi danh
+    SS --> SC : Error: NotEnrolled
+    SC --> FE : 403 Forbidden { message: "Ban chua ghi danh khoa hoc nay" }
+else Da het han & allow_late == FALSE
+    SS --> SC : Error: PastDeadline
+    SC --> FE : 400 Bad Request { message: "Da het han nop bai va bai tap khong cho phep nop tre" }
+    FE --> SV : Thong bao khoa nhan bai
+else Hop le (Truoc han HOAC qua han nhung allow_late == TRUE)
+    SS -> SR : checkExistingSubmission(assignmentId, studentId)
+    SR -> DB : SELECT * FROM submissions WHERE assignment_id = ? AND student_id = ? FOR UPDATE
+
+    alt Nop lan dau
+        SS -> SS : Tinh toan is_late va late_minutes (so sanh NOW() va deadline)
+        SS -> SR : insertSubmission(...)
+        SR -> DB : INSERT INTO submissions (assignment_id, student_id, file_uuid, is_late, late_minutes, status) VALUES (...)
+    else Nop lai (In-place update - Mục C.2)
+        SS -> FS : Xoa file vat ly cu (EC-19 tranh orphaned file)
+        SS -> SS : Tinh lai is_late, late_minutes va submission_count = count + 1
+        SS -> SR : updateSubmission(...)
+        SR -> DB : UPDATE submissions SET file_uuid=?, submitted_at=NOW(), is_late=?, late_minutes=?, submission_count=submission_count+1 WHERE id=?
+    end
+    DB --> SR : Success
+    SS --> SC : Submission result
+    SC --> FE : 200 OK { submission, message: "Nop bai thanh cong" }
+    FE --> SV : Hien thi thong tin da nop, thoi gian nop va nhan "Nop tre" (neu co)
+end
+@enduml
+
+@startuml
+title US-09: Giang vien cham diem va nhan xet bai tu luan (Chong IDOR)
+autonumber
+actor GV as "Giang vien"
+actor GV_Khac as "Giang vien khac\n(Attacker)"
+participant FE as "Frontend SPA"
+participant MW as "Auth Middleware"
+participant GC as "GradeController"
+participant GS as "GradeService"
+participant GR as "GradeRepository"
+database DB as "MySQL DB"
+
+== Truong hop IDOR: Giang vien khong phu trach khoa hoc co tinh cham bai ==
+GV_Khac -> MW : POST /api/submissions/456/grade { score: 9.0, feedback: "..." }
+MW -> GC : Chuyen tiep (req.user.id = 999)
+GC -> GS : gradeSubmission(subId=456, gvId=999, score, feedback)
+GS -> GR : checkOwnership(subId=456, gvId=999)
+GR -> DB : SELECT c.instructor_id FROM submissions s JOIN assignments a ON s.assignment_id = a.id JOIN courses c ON a.course_id = c.id WHERE s.id = 456
+DB --> GR : instructor_id == 2 (Khong khop voi 999)
+GS --> GC : Error: Forbidden
+GC --> MW : 403 Forbidden { message: "Ban khong co quyen cham bai khoa hoc nay" }
+MW --> GV_Khac : 403 Forbidden (Chong IDOR thanh cong EC-01)
+
+== Truong hop Giang vien so huu cham diem hop le ==
+GV -> FE : Nhap diem "8.5", nhan xet -> Bam "Luu diem"
+FE -> MW : POST /api/submissions/456/grade { score: 8.5, feedback: "..." }
+MW -> GC : Chuyen tiep (req.user.id = 2)
+GC -> GS : gradeSubmission(456, 2, 8.5, feedback)
+
+alt Diem ngoai khoang [0.0, 10.0] (BR-08, EC-16)
+    GS --> GC : Error: InvalidScore
+    GC --> FE : 400 Bad Request { message: "Diem so phai nam trong khoang tu 0 den 10" }
+    FE --> GV : Bao loi tai o nhap
+else Diem hop le
+    GS -> GR : saveGrade(submissionId=456, gvId=2, score=8.5, feedback)
+    note over GR, DB
+      Transaction: Cap nhat bang grades va doi trang thai submission thanh 'GRADED'
+    end note
+    GR -> DB : BEGIN TRANSACTION
+    GR -> DB : INSERT INTO grades (submission_id, graded_by, score, feedback) VALUES (456, 2, 8.5, feedback) ON DUPLICATE KEY UPDATE score=VALUES(score), feedback=VALUES(feedback)
+    GR -> DB : UPDATE submissions SET status = 'GRADED' WHERE id = 456
+    GR -> DB : COMMIT
+    GS --> GC : Grade object
+    GC --> FE : 200 OK { message: "Luu diem thanh cong", grade }
+    FE --> GV : Hien thi trang thai da cham diem
+end
+@enduml
+
+@startuml
+title US-10: Tao de thi trac nghiem va khoa sua khi da co luot thi (EC-07)
+autonumber
+actor GV as "Giang vien"
+participant FE as "Frontend SPA"
+participant MW as "Auth Middleware"
+participant QC as "QuizController"
+participant QS as "QuizService"
+participant QR as "QuizRepository"
+database DB as "MySQL DB"
+
+== Tao de thi trac nghiem ==
+GV -> FE : Nhap tieu de, thoi luong 30p, open_time, close_time, them cau hoi & dap an -> Bam "Luu"
+FE -> MW : POST /api/courses/{courseId}/quizzes { title, duration_minutes, open_time, close_time, questions: [...] }
+MW -> QC : Chuyen tiep
+QC -> QS : createQuiz(courseId, gvId, quizData)
+
+QS -> QS : Validate open_time < close_time va duration > 0 (BR-12)
+QS -> QS : Validate moi cau hoi co 2-5 lua chon va co DUNG 1 lua chon is_correct = TRUE (Mục C.3)
+QS -> QR : saveQuizWithQuestions(quizData)
+QR -> DB : BEGIN TRANSACTION
+QR -> DB : INSERT INTO quizzes (...) VALUES (...) -> quiz_id
+loop Voi moi cau hoi
+    QR -> DB : INSERT INTO questions (quiz_id, content, order_index) VALUES (...) -> question_id
+    loop Voi moi lua chon
+        QR -> DB : INSERT INTO options (question_id, content, is_correct, order_index) VALUES (...)
+    end
+end
+QR -> DB : COMMIT
+QS --> QC : Quiz created
+QC --> FE : 201 Created { quiz }
+FE --> GV : Hien thi de thi thanh cong
+
+== Khoa chinh sua de thi khi da co luot thi (EC-07) ==
+GV -> FE : Bam "Sua cau hoi de thi"
+FE -> MW : PUT /api/quizzes/{id}/questions
+MW -> QC : Chuyen tiep
+QC -> QS : updateQuizQuestions(quizId, gvId, questions)
+QS -> QR : checkAttemptsExist(quizId)
+QR -> DB : SELECT COUNT(*) as total FROM attempts WHERE quiz_id = ?
+DB --> QR : total = 15 (Da co 15 luot thi)
+
+alt total > 0 (De thi da co sinh vien lam bai)
+    QS --> QC : Error: QuizLockedForEditing
+    QC --> FE : 400 Bad Request { message: "Khong the chinh sua de thi khi da co thi sinh lam bai" }
+    FE --> GV : Canh bao khoa sua de
+end
+@enduml
+
+@startuml
+title US-11: Sinh vien lam bai thi trac nghiem (Session Token, Auto-save, F5 Recovery)
+autonumber
+actor SV as "Sinh vien"
+participant FE as "Frontend SPA (Phong thi)"
+participant MW as "Auth Middleware"
+participant QC as "AttemptController"
+participant QS as "AttemptService"
+participant QR as "AttemptRepository"
+database DB as "MySQL DB"
+
+== Bat dau lam bai thi ==
+SV -> FE : Bam "Bat dau lam bai thi"
+FE -> MW : POST /api/quizzes/{quizId}/start
+MW -> QC : Chuyen tiep (studentId = req.user.id)
+QC -> QS : startAttempt(quizId, studentId)
+
+QS -> QR : checkAlreadyAttempted(quizId, studentId)
+QR -> DB : SELECT * FROM attempts WHERE quiz_id = ? AND student_id = ?
+
+alt Da nop bai tu truoc (BR-15: Chi thi 1 lan)
+    DB --> QR : Attempt (status == 'SUBMITTED')
+    QS --> QC : Error: AlreadySubmitted
+    QC --> FE : 400 Bad Request { message: "Ban da hoan thanh bai thi nay, khong duoc thi lai" }
+    FE --> SV : Bao loi khong duoc thi lai
+else Dang co luot thi do dang (status == 'IN_PROGRESS' - Truong hop F5 hoac rot mang EC-10)
+    DB --> QR : Attempt (status == 'IN_PROGRESS', expires_at, session_token)
+    QS -> QR : getSavedAnswers(attempt.id)
+    QR -> DB : SELECT question_id, selected_option_id FROM attempt_answers WHERE attempt_id = ?
+    DB --> QR : savedAnswers
+    QS --> QC : Resume Data { attemptId, remainingSeconds, savedAnswers, questions (NO ANSWERS) }
+    QC --> FE : 200 OK (Khoi phuc bai thi dang do)
+    FE --> SV : Phuc hoi cac cau da chon va tiep tuc dem nguoc
+else Luot thi moi hoan toan
+    QS -> QS : started_at = NOW(), expires_at = NOW() + duration_minutes
+    QS -> QS : Sinh session_token duy nhat (chong mo 2 tab EC-13)
+    QS -> QR : createAttempt(quizId, studentId, started_at, expires_at, session_token)
+    QR -> DB : INSERT INTO attempts (quiz_id, student_id, started_at, expires_at, session_token, status) VALUES (...)
+    QS -> QR : getQuestionsWithoutAnswers(quizId)
+    note over QR, DB
+      Bao mat de thi: TUYET DOI khong gui is_correct ve Client (EC-02)
+    end note
+    QR -> DB : SELECT q.id, q.content, o.id, o.content FROM questions q JOIN options o ON q.id = o.question_id WHERE q.quiz_id = ?
+    DB --> QR : questions & options (without is_correct)
+    QS --> QC : { attemptId, session_token, remainingSeconds, questions }
+    QC --> FE : 200 OK
+    FE --> SV : Khoi chay dong ho dem nguoc & hien thi cau hoi
+end
+
+== Qua trinh lam bai & Auto-save dap an ==
+loop Sinh vien chon dap an moi cau
+    SV -> FE : Click chon dap an A cho cau hoi 1
+    FE -> MW : PATCH /api/attempts/{id}/save-answer { questionId: 1, optionId: 10, sessionToken }
+    MW -> QC : Chuyen tiep
+    QC -> QS : saveAnswer(attemptId, questionId, optionId, sessionToken)
+    QS -> QR : verifySessionAndExpiry(attemptId, sessionToken)
+    alt Sai sessionToken (Mo tren 2 tab EC-13)
+        QS --> QC : Error: InvalidSessionToken
+        QC --> FE : 409 Conflict { message: "Bai thi dang duoc mo o cua so khac" }
+    else Hop le & chua het gio
+        QS -> QR : upsertAnswer(attemptId, questionId, optionId)
+        QR -> DB : INSERT INTO attempt_answers (attempt_id, question_id, selected_option_id) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE selected_option_id = VALUES(selected_option_id)
+        QC --> FE : 200 OK { saved: true }
+    end
+end
+@enduml
+
+@startuml
+title US-12: Nop bai thi trac nghiem & Cham tu dong trong 1 Transaction (NFR-08)
+autonumber
+actor SV as "Sinh vien"
+participant FE as "Frontend SPA"
+participant MW as "Auth Middleware"
+participant QC as "AttemptController"
+participant QS as "AttemptService"
+participant QR as "AttemptRepository"
+participant Worker as "Server CronWorker\n(Background)"
+database DB as "MySQL DB"
+
+== Truong hop 1: Sinh vien chu dong bam "Nop bai thi" ==
+SV -> FE : Bam "Nop bai thi" & Xac nhan
+FE -> MW : POST /api/attempts/{id}/submit { sessionToken }
+MW -> QC : Chuyen tiep
+QC -> QS : submitAndGrade(attemptId, isAutoSubmit=FALSE)
+
+== Truong hop 2: Dong ho Client dem ve 0 -> Tu dong trigger nop ==
+FE -> MW : POST /api/attempts/{id}/submit (Client Auto-submit)
+
+== Truong hop 3: Client rot mang/tat may -> Server CronWorker quet sau 30s het gio (Mục C.7) ==
+Worker -> QS : autoSubmitExpiredAttempts()
+QS -> QR : findExpiredAttempts()
+QR -> DB : SELECT id FROM attempts WHERE status = 'IN_PROGRESS' AND expires_at < NOW() - INTERVAL 30 SECOND
+DB --> QR : List of expired attempt IDs
+loop Voi moi attemptId qua han
+    QS -> QS : submitAndGrade(attemptId, isAutoSubmit=TRUE)
+end
+
+== Xu ly Cham diem trong 1 Transaction duy nhat (NFR-08, EC-05) ==
+QS -> QR : executeGradingTransaction(attemptId, isAutoSubmit)
+QR -> DB : BEGIN TRANSACTION
+QR -> DB : SELECT * FROM attempts WHERE id = ? FOR UPDATE
+note over QR, DB: Lock ban ghi attempt de tranh race condition
+QR -> DB : SELECT aa.question_id, aa.selected_option_id, o.is_correct FROM attempt_answers aa JOIN options o ON aa.selected_option_id = o.id WHERE aa.attempt_id = ?
+DB --> QR : answersWithCorrectness
+QR -> DB : SELECT COUNT(*) as total_q FROM questions WHERE quiz_id = ?
+DB --> QR : total_q
+
+QR -> QR : Dem so cau tra loi dung: correct_count
+QR -> QR : Tinh diem theo cong thuc (Mục C.4):\nscore = ROUND((correct_count / total_q) * 10.0, 2)
+QR -> DB : UPDATE attempts SET status = IF(isAutoSubmit, 'AUTO_SUBMITTED', 'SUBMITTED'), submitted_at = NOW(), total_questions = total_q, correct_answers_count = correct_count, score = ? WHERE id = ?
+QR -> DB : UPDATE quizzes SET has_attempts = TRUE WHERE id = quiz_id
+QR -> DB : COMMIT
+
+alt Nop truc tiep tu Web Client
+    QS --> QC : { score, correct_count, total_q, status }
+    QC --> FE : 200 OK { result }
+    FE --> SV : Hien thi diem so ngay lap tuc tren man hinh ket qua
+end
+@enduml
+
+@startuml
+title US-13: Sinh vien xem bang diem ca nhan (Chong IDOR)
+autonumber
+actor SV as "Sinh vien"
+participant FE as "Frontend SPA"
+participant MW as "Auth Middleware"
+participant GC as "GradebookController"
+participant GS as "GradebookService"
+participant QS as "QuizResultService (M3)"
+participant GR as "GradebookRepository (M2)"
+database DB as "MySQL DB"
+
+SV -> FE : Vao muc "Bang diem ca nhan" cua khoa hoc CS101
+FE -> MW : GET /api/courses/{courseId}/my-grades
+MW -> MW : Verify JWT (studentId = req.user.id)
+MW -> GC : Chuyen tiep
+GC -> GS : getStudentPersonalGrades(courseId, studentId)
+
+GS -> GR : checkStudentEnrolled(courseId, studentId)
+GR -> DB : SELECT id FROM enrollments WHERE course_id = ? AND student_id = ?
+DB --> GR : enrollment_id (Xac thuc la thanh vien)
+
+== Lay diem bai tap tu luan (Noi bo M2) ==
+GS -> GR : getAssignmentGrades(courseId, studentId)
+GR -> DB : SELECT a.id, a.title, a.max_score, g.score, g.feedback, s.status, s.is_late FROM assignments a LEFT JOIN submissions s ON a.id = s.assignment_id AND s.student_id = ? LEFT JOIN grades g ON s.id = g.submission_id WHERE a.course_id = ? AND a.deleted_at IS NULL
+DB --> GR : assignmentGradesList
+
+== Lay diem trac nghiem (Goi M3 qua Service Interface) ==
+GS -> QS : getStudentQuizGrades(courseId, studentId)
+QS -> DB : SELECT q.id, q.title, at.score, at.total_questions, at.correct_answers_count, at.status FROM quizzes q LEFT JOIN attempts at ON q.id = at.quiz_id AND at.student_id = ? WHERE q.course_id = ? AND q.deleted_at IS NULL
+DB --> QS : quizGradesList
+QS --> GS : quizGradesList
+
+GS -> GS : Tong hop danh sach diem ca nhan cua dung studentId (Chong IDOR EC-01)
+GS --> GC : ConsolidatedGradebookData
+GC --> FE : 200 OK { assignments: [...], quizzes: [...] }
+FE --> SV : Hien thi chi tiet cac cot diem & nhan xet
+@enduml
+
+@startuml
+title US-14: Giang vien xem va xuat bang diem tong hop (Tranh N+1 & chong CSV Injection)
+autonumber
+actor GV as "Giang vien"
+participant FE as "Frontend SPA"
+participant MW as "Auth Middleware"
+participant GC as "GradebookController"
+participant GS as "GradebookService (M2)"
+participant QS as "QuizResultService (M3)"
+participant GR as "GradebookRepository (M2)"
+participant CSVE as "CSVExporter Utility"
+database DB as "MySQL DB"
+
+== 1. Xem bang diem lop phan trang (Tranh N+1 EC-21) ==
+GV -> FE : Vao tab "Bang diem tong hop" (trang 1, limit=20)
+FE -> MW : GET /api/courses/{id}/grades?page=1&limit=20
+MW -> MW : Verify role == 'GIANG_VIEN' & Chu so huu khoa hoc
+MW -> GC : Chuyen tiep
+GC -> GS : getClassGradebook(courseId, page=1, limit=20)
+
+note over GS, DB
+  Toi uu N+1: Truy van 20 sinh vien trong trang, sau do dung IN (?)
+  de JOIN lay toan bo diem bai tap va diem thi trong 2 query gom
+end note
+GS -> GR : getEnrolledStudents(courseId, offset=0, limit=20)
+GR -> DB : SELECT u.id, u.username, u.full_name FROM enrollments e JOIN users u ON e.student_id = u.id WHERE e.course_id = ? ORDER BY u.id LIMIT 20 OFFSET 0
+DB --> GR : 20 students
+
+GS -> GR : getSubmissionsForStudents(assignmentIds, studentIds)
+GR -> DB : SELECT s.student_id, s.assignment_id, g.score FROM submissions s JOIN grades g ON s.id = g.submission_id WHERE s.assignment_id IN (...) AND s.student_id IN (20_ids)
+DB --> GR : assignmentScores
+
+GS -> QS : getQuizScoresForStudents(quizIds, studentIds)
+QS -> DB : SELECT student_id, quiz_id, score FROM attempts WHERE quiz_id IN (...) AND student_id IN (20_ids)
+DB --> QS : quizScores
+QS --> GS : quizScores
+
+GS -> GS : Map du lieu vao bang dang ma tran (Matrix)
+GS --> GC : { totalStudents, totalPages, studentsGrades: [...] }
+GC --> FE : 200 OK
+FE --> GV : Hien thi luoi diem 20 sinh vien
+
+== 2. Xuat bang diem ra file CSV an toan (BR-16, EC-17) ==
+GV -> FE : Bam nut "Xuat CSV"
+FE -> MW : GET /api/courses/{id}/grades/export-csv
+MW -> GC : Chuyen tiep
+GC -> GS : exportClassGradebookCSV(courseId)
+GS -> GR : getAllStudentsAndGrades(courseId)
+GR -> DB : Truy van toan bo diem cua khoa hoc
+DB --> GR : fullGradeData
+
+GS -> CSVE : generateSafeCSV(fullGradeData)
+note over CSVE
+  Chong CSV Injection: Neu o bat dau bang '=', '+', '-', '@'
+  thi them dau nhay don "'" o dau.
+  Them UTF-8 BOM (\uFEFF) de khong loi font tieng Viet tren Excel.
+end note
+CSVE --> GS : csvBuffer
+GS --> GC : csvBuffer
+GC -> GC : Set Header: Content-Type: text/csv; charset=utf-8\nContent-Disposition: attachment; filename="BangDiem_CS101.csv"
+GC --> FE : 200 OK (File CSV)
+FE --> GV : Trinh duyet tai file BangDiem_CS101.csv
+@enduml
+
+@startuml
+title US-15 & US-16: Dang thong bao & Thao luan bai hoc (Sanitize chong XSS)
+autonumber
+actor User as "Giang vien / Sinh vien"
+participant FE as "Frontend SPA"
+participant MW as "Auth Middleware"
+participant CC as "CommunicationController"
+participant CS as "CommunicationService"
+participant SAN as "HTML Sanitizer (DOMPurify/sanitize-html)"
+participant CR as "CommunicationRepository"
+database DB as "MySQL DB"
+
+== US-15: Giang vien dang thong bao khoa hoc ==
+User -> FE : Nhap tieu de, noi dung thong bao -> Bam "Dang"
+FE -> MW : POST /api/courses/{id}/announcements { title, content }
+MW -> MW : Kiem tra role in ['GIANG_VIEN', 'ADMIN'] (BR-17)
+
+alt Sinh vien co tinh goi API dang thong bao
+    MW --> FE : 403 Forbidden { message: "Sinh vien khong co quyen dang thong bao" }
+else Quyen hop le
+    MW -> CC : Chuyen tiep (authorId = req.user.id)
+    CC -> CS : createAnnouncement(courseId, authorId, title, content)
+    CS -> SAN : sanitize(title), sanitize(content) (BR-18, EC-11)
+    SAN --> CS : cleanTitle, cleanContent (Xoa bo <script>, onerror, payload XSS)
+    CS -> CR : insertAnnouncement(courseId, authorId, cleanTitle, cleanContent)
+    CR -> DB : INSERT INTO announcements (...) VALUES (...)
+    DB --> CR : announcement_id
+    CS --> CC : Announcement object
+    CC --> FE : 201 Created { announcement }
+    FE --> User : Hien thi thong bao len bang tin khoa hoc
+end
+
+== US-16: Sinh vien gui binh luan thao luan bai hoc ==
+User -> FE : Nhap noi dung thao luan tai bai giang 1 -> Bam "Gui"
+FE -> MW : POST /api/courses/{id}/discussions { lessonId: 1, content: "<script>alert('xss')</script>Cau hoi ve bai tap" }
+MW -> CC : Chuyen tiep
+CC -> CS : postDiscussion(courseId, lessonId, authorId, content)
+CS -> CR : checkEnrolled(courseId, authorId)
+CR -> DB : Kiem tra quyen thanh vien
+DB --> CR : Enrolled = TRUE
+
+CS -> SAN : sanitize(content)
+SAN --> CS : "Cau hoi ve bai tap" (Payload script da bi loai bo hoan toan)
+CS -> CR : insertDiscussion(courseId, lessonId, authorId, "Cau hoi ve bai tap")
+CR -> DB : INSERT INTO discussions (...) VALUES (...)
+DB --> CR : discussion_id
+CS --> CC : Discussion object
+CC --> FE : 201 Created { discussion }
+FE --> User : Binh luan xuat hien an toan duoi bai hoc
+@enduml
+
+@startuml
+title US-17 & US-18: Tao buoi hoc (Kiem tra trung gio) & Xem thoi khoa bieu (Chong IDOR)
+autonumber
+actor GV as "Giang vien"
+actor SV as "Sinh vien"
+participant FE as "Frontend SPA"
+participant MW as "Auth Middleware"
+participant SC as "ScheduleController"
+participant SS as "ScheduleService"
+participant SR as "ScheduleRepository"
+database DB as "MySQL DB"
+
+== US-17: Giang vien tao buoi hoc moi (Kiem tra trung gio BR-19, EC-23) ==
+GV -> FE : Nhap tieu de, ngay "2026-11-10", gio 08:00 - 11:30, phong "B302" -> Bam "Luu"
+FE -> MW : POST /api/courses/{id}/schedules { title, date, startTime, endTime, roomOrLink }
+MW -> MW : Verify role == 'GIANG_VIEN'
+MW -> SC : Chuyen tiep (gvId = req.user.id)
+SC -> SS : createSchedule(courseId, gvId, scheduleData)
+
+alt start_time >= end_time
+    SS --> SC : Error: InvalidTimeRange
+    SC --> FE : 400 Bad Request { message: "Gio ket thuc phai sau gio bat dau" }
+    FE --> GV : Bao loi thoi gian
+else Thoi gian co ban hop le
+    SS -> SR : checkScheduleConflict(courseId, date, startTime, endTime)
+    SR -> DB : SELECT id FROM schedules WHERE course_id = ? AND date = ? AND status != 'CANCELLED' AND ((start_time < ? AND end_time > ?) OR (start_time < ? AND end_time > ?))
+    DB --> SR : Conflict records (Neu co)
+
+    alt Phat hien trung gio voi buoi hoc da co (EC-23)
+        SS --> SC : Error: ScheduleConflict
+        SC --> FE : 409 Conflict { message: "Khung gio bi trung voi buoi hoc da ton tai tren he thong" }
+        FE --> GV : Bao loi xung dot lich hoc
+    else Khong bi trung lich
+        SS -> SR : insertSchedule(courseId, title, date, startTime, endTime, roomOrLink)
+        SR -> DB : INSERT INTO schedules (...) VALUES (...)
+        DB --> SR : schedule_id
+        SS --> SC : Schedule object
+        SC --> FE : 201 Created { schedule }
+        FE --> GV : Hien thi buoi hoc vao lich hoc cua lop
+    end
+end
+
+== US-18: Sinh vien xem thoi khoa bieu khoa hoc (Chong IDOR BR-20) ==
+SV -> FE : Vao muc "Lich hoc" cua khoa hoc INT3101
+FE -> MW : GET /api/courses/{id}/schedules
+MW -> MW : Verify JWT sinh vien (studentId = req.user.id)
+MW -> SC : Chuyen tiep
+SC -> SS : getCourseSchedules(courseId, studentId)
+SS -> SR : checkStudentEnrolled(courseId, studentId)
+SR -> DB : SELECT id FROM enrollments WHERE course_id = ? AND student_id = ?
+
+alt Sinh vien chua ghi danh vao khoa hoc (Chong IDOR)
+    DB --> SR : Null
+    SS --> SC : Error: Forbidden
+    SC --> FE : 403 Forbidden { message: "Ban can ghi danh khoa hoc de xem thoi khoa bieu chi tiet" }
+    FE --> SV : Bao loi khong co quyen
+else Sinh vien da ghi danh
+    DB --> SR : Enrolled = TRUE
+    SS -> SR : getSchedulesList(courseId)
+    SR -> DB : SELECT * FROM schedules WHERE course_id = ? AND status != 'CANCELLED' ORDER BY date ASC, start_time ASC
+    DB --> SR : List of schedules
+    SS --> SC : schedules
+    SC --> FE : 200 OK { schedules }
+    FE --> SV : Hien thi danh sach cac buoi hoc & lam noi bat buoi hoc gan nhat
+end
+@enduml
+

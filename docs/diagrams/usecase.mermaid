@@ -1,0 +1,78 @@
+flowchart LR
+    subgraph Actors["TÁC NHÂN HỆ THỐNG (ACTORS)"]
+        Admin["Admin (Quản trị viên)"]
+        GV["Giảng viên (Instructor)"]
+        SV["Sinh viên (Student)"]
+        SystemTimer["Hệ thống / Cron Worker"]
+    end
+
+    subgraph E1["E1: Quản lý Tài khoản & Xác thực"]
+        UC01["US-01: Đăng nhập hệ thống & Thu hồi phiên"]
+        UC02["US-02: Quản lý người dùng & Khóa tài khoản"]
+    end
+
+    subgraph E2["E2: Khóa học, Bài giảng & Lịch học"]
+        UC03["US-03: Tạo & Quản lý khóa học (Sinh mã)"]
+        UC04["US-04: Ghi danh bằng Enrollment Key"]
+        UC05["US-05: Đăng tải bài giảng & Tài liệu"]
+        UC06["US-06: Xem & Tải tài liệu bài giảng"]
+        UC17["US-17: Thiết lập & Quản lý lịch học"]
+        UC18["US-18: Xem thời khóa biểu & Lịch học"]
+    end
+
+    subgraph E3["E3: Bài tập Tự luận & Chấm điểm"]
+        UC07["US-07: Tạo & Giao bài tập tự luận"]
+        UC08["US-08: Nộp bài tập (Đính kèm tệp)"]
+        UC09["US-09: Chấm điểm bài tập & Phản hồi"]
+    end
+
+    subgraph E4["E4: Đề thi Trắc nghiệm & Chấm tự động"]
+        UC10["US-10: Tạo đề thi trắc nghiệm & Khóa sửa"]
+        UC11["US-11: Làm bài thi trực tuyến & Auto-save"]
+        UC12["US-12: Tự động chấm điểm (DB Transaction)"]
+        UC12_Auto["Tự động thu bài khi hết giờ (Auto-submit)"]
+    end
+
+    subgraph E5["E5: Bảng điểm & Thống kê"]
+        UC13["US-13: Xem bảng điểm cá nhân"]
+        UC14["US-14: Xem & Xuất bảng điểm lớp (CSV an toàn)"]
+    end
+
+    subgraph E6["E6: Thông báo & Thảo luận"]
+        UC15["US-15: Đăng & Xem thông báo khóa học"]
+        UC16["US-16: Diễn đàn thảo luận bài học"]
+    end
+
+    %% Admin Connections
+    Admin --> UC01
+    Admin --> UC02
+    Admin -->|BR-17: Đăng thông báo toàn hệ thống/khóa học| UC15
+
+    %% Giảng viên Connections
+    GV --> UC01
+    GV --> UC03
+    GV --> UC05
+    GV --> UC17
+    GV --> UC07
+    GV --> UC09
+    GV --> UC10
+    GV --> UC14
+    GV --> UC15
+    GV --> UC16
+
+    %% Sinh viên Connections
+    SV --> UC01
+    SV --> UC04
+    SV --> UC06
+    SV --> UC18
+    SV --> UC08
+    SV --> UC11
+    SV --> UC13
+    SV --> UC15
+    SV --> UC16
+
+    %% System Worker Connections
+    UC11 -.->|Khi nộp chủ động| UC12
+    SystemTimer -->|Quét expires_at < NOW| UC12_Auto
+    UC12_Auto -.->|Kích hoạt tính điểm| UC12
+
