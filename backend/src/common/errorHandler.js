@@ -13,7 +13,7 @@
 
 const { AppError } = require('./errors');
 const logger = require('./logger');
-const env = require('./env');
+const config = require('./config');
 
 // eslint-disable-next-line no-unused-vars
 function errorHandler(err, req, res, next) {
@@ -35,7 +35,7 @@ function errorHandler(err, req, res, next) {
   } else {
     // Lỗi hệ thống không lường trước
     logger.error(`[Unhandled Error] ${req.method} ${req.originalUrl}:`, err);
-    if (!env.isProduction) {
+    if (!config.isProduction) {
       details = {
         name: err.name,
         stack: err.stack
@@ -51,4 +51,3 @@ function errorHandler(err, req, res, next) {
 }
 
 module.exports = errorHandler;
-

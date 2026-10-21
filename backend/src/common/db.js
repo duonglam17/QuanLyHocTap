@@ -6,62 +6,53 @@
  * =============================================================================
  */
 
-const env = require('./env');
+const config = require('./config');
 const logger = require('./logger');
 
 let pool = null;
 
 function getPool() {
   if (!pool) {
-    let mysql;
-    try {
-      mysql = require('mysql2/promise');
-    } catch {
-      logger.warn('Gói mysql2 chưa được cài đặt. Khởi tạo pool ở chế độ giả lập.');
-      return null;
-    }
-
+    const mysql = require('mysql2/promise');
     pool = mysql.createPool({
-      host: env.DB_HOST,
-      port: env.DB_PORT,
-      user: env.DB_USER,
-      password: env.DB_PASSWORD,
-      database: env.DB_NAME,
+      host: config.DB_HOST,
+      port: config.DB_PORT,
+      user: config.DB_USER,
+      password: config.DB_PASSWORD,
+      database: config.DB_NAME,
       waitForConnections: true,
-      connectionLimit: env.DB_CONNECTION_LIMIT,
+      connectionLimit: config.DB_CONNECTION_LIMIT,
       queueLimit: 0,
-      multipleStatements: true,
       timezone: '+07:00'
     });
 
-    logger.info(`Đã khởi tạo MySQL Connection Pool tới [${env.DB_HOST}:${env.DB_PORT}/${env.DB_NAME}]`);
+    logger.info(
+      `Đã khởi tạo MySQL Connection Pool tới [${config.DB_HOST}:${config.DB_PORT}/${config.DB_NAME}]`
+    );
   }
   return pool;
 }
 
 async function testConnection() {
-  try {
-    const p = getPool();
-    if (!p) return false;
-    const [rows] = await p.query('SELECT 1 as connected');
-    return rows && rows[0] && rows[0].connected === 1;
-  } catch (err) {
-    logger.error('Lỗi kiểm tra kết nối CSDL:', err);
-    return false;
-  }
+  const [rows] = await getPool().query('SELECT 1 AS connected');
+  return rows[0]?.connected === 1;
 }
 
 async function query(sql, params) {
-  const p = getPool();
-  if (!p) {
-    throw new Error('Database connection pool is not available.');
+  return getPool().query(sql, params);
+}
+
+async function closePool() {
+  if (pool) {
+    const currentPool = pool;
+    pool = null;
+    await currentPool.end();
   }
-  return p.query(sql, params);
 }
 
 module.exports = {
   getPool,
   testConnection,
-  query
+  query,
+  closePool
 };
-

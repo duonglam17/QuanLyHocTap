@@ -6,7 +6,7 @@
  * =============================================================================
  */
 
-const env = require('./env');
+const config = require('./config');
 
 const LogLevel = {
   DEBUG: 0,
@@ -15,7 +15,7 @@ const LogLevel = {
   ERROR: 3
 };
 
-const currentLevel = env.isProduction ? LogLevel.INFO : LogLevel.DEBUG;
+const currentLevel = config.isProduction ? LogLevel.INFO : LogLevel.DEBUG;
 
 function formatMessage(level, message, meta) {
   const timestamp = new Date().toISOString();
@@ -45,10 +45,12 @@ const logger = {
   error(message, errorOrMeta) {
     if (currentLevel <= LogLevel.ERROR) {
       if (errorOrMeta instanceof Error) {
-        console.error(formatMessage('ERROR', message, {
-          message: errorOrMeta.message,
-          stack: errorOrMeta.stack
-        }));
+        console.error(
+          formatMessage('ERROR', message, {
+            message: errorOrMeta.message,
+            stack: errorOrMeta.stack
+          })
+        );
       } else {
         console.error(formatMessage('ERROR', message, errorOrMeta));
       }
@@ -57,4 +59,3 @@ const logger = {
 };
 
 module.exports = logger;
-

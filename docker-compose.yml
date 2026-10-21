@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   mysql:
@@ -6,10 +6,10 @@ services:
     container_name: lms_mysql
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: root_password_123
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-local-root-password}
       MYSQL_DATABASE: lms_mini_db
-      MYSQL_USER: lms_user
-      MYSQL_PASSWORD: lms_password_123
+      MYSQL_USER: ${DB_USER:-lms_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-local-development-only}
       TZ: "Asia/Ho_Chi_Minh"
     command:
       - --default-authentication-plugin=mysql_native_password
@@ -29,7 +29,17 @@ services:
     networks:
       - lms_network
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "lms_user", "-plms_password_123"]
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "${DB_USER:-lms_user}",
+          "-p${DB_PASSWORD:-local-development-only}",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -49,14 +59,14 @@ services:
       TZ: "Asia/Ho_Chi_Minh"
       DB_HOST: mysql
       DB_PORT: 3306
-      DB_USER: lms_user
-      DB_PASSWORD: lms_password_123
+      DB_USER: ${DB_USER:-lms_user}
+      DB_PASSWORD: ${DB_PASSWORD:-local-development-only}
       DB_NAME: lms_mini_db
-      JWT_SECRET: your_jwt_super_secret_key_change_in_prod
-      JWT_EXPIRES_IN: 15m
-      REFRESH_TOKEN_EXPIRES_IN: 7d
-      UPLOAD_DIR: /app/uploads
-      CORS_ORIGIN: "http://localhost:3000,http://localhost:5173"
+      JWT_SECRET: ${JWT_SECRET:-local-development-secret-change-before-deployment}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+      REFRESH_TOKEN_EXPIRES_IN: ${REFRESH_TOKEN_EXPIRES_IN:-7d}
+      UPLOAD_DIR: ${UPLOAD_DIR:-/app/uploads}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000,http://localhost:5173}
     ports:
       - "5000:5000"
     volumes:
@@ -73,4 +83,3 @@ networks:
 volumes:
   mysql_data:
   file_uploads:
-
