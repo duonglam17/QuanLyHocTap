@@ -1,20 +1,38 @@
-const { rateLimit: expressRateLimit } = require('express-rate-limit');
+const { rateLimit: expressRateLimit, ipKeyGenerator } = require('express-rate-limit');
 const { TooManyRequestsError } = require('./errors');
 
-function rateLimit(options = {}) {
-  const windowMs = options.windowMs ?? 60_000;
-  const limit = options.limit ?? options.max ?? 100;
-  const message = options.message ?? 'Bạn đã gửi quá nhiều yêu cầu trong thời gian ngắn';
+const limiters = new Map();
 
-  return expressRateLimit({
-    ...options,
+function rateLimit(name, { windowMs = 60_000, max = 100 } = {}) {
+  if (typeof name !== 'string' || name.trim() === '') {
+    throw new TypeError('Tên rate limit phải là chuỗi không rỗng.');
+  }
+  if (!Number.isSafeInteger(windowMs) || windowMs <= 0) {
+    throw new TypeError('windowMs phải là số nguyên dương.');
+  }
+  if (!Number.isSafeInteger(max) || max <= 0) {
+    throw new TypeError('max phải là số nguyên dương.');
+  }
+
+  const existing = limiters.get(name);
+  if (existing) {
+    if (existing.windowMs !== windowMs || existing.max !== max) {
+      throw new Error(`Rate limit "${name}" đã được cấu hình khác.`);
+    }
+    return existing.middleware;
+  }
+
+  const middleware = expressRateLimit({
     windowMs,
-    limit,
+    limit: max,
     standardHeaders: true,
     legacyHeaders: false,
+    keyGenerator(req) {
+      return req.user?.id ? `user:${req.user.id}` : `ip:${ipKeyGenerator(req.ip)}`;
+    },
     handler(req, res, next) {
-      next(
-        new TooManyRequestsError(message, {
+      return next(
+        new TooManyRequestsError('Bạn đã gửi quá nhiều yêu cầu trong thời gian ngắn', {
           retryAfterSeconds: Math.max(
             0,
             Math.ceil((req.rateLimit.resetTime.getTime() - Date.now()) / 1000)
@@ -23,6 +41,8 @@ function rateLimit(options = {}) {
       );
     }
   });
+  limiters.set(name, { windowMs, max, middleware });
+  return middleware;
 }
 
 module.exports = rateLimit;

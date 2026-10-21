@@ -11,6 +11,13 @@ const { Router } = require('express');
 const { router: studentGradebookRoutes } = require('./routes/studentGradebookRoutes');
 
 const router = Router();
+const classGradebookRoutes = createClassGradebookRouter({
+  controller: new ClassGradebookController(
+    new ClassGradebookService({
+      gradebookRepository: new ClassGradebookRepository()
+    })
+  )
+});
 
 // Route kiểm tra hoạt động của module M2: GET /api/m2-assessment/ping
 router.get('/ping', (req, res) => {

@@ -1,8 +1,8 @@
-# Inter-module service contracts
+# Inter-module contracts
 
-Modules communicate through public Service interfaces or these Ports. Do not import another module's controller, repository, or model, and do not query another module's tables.
+[`docs/contracts.md`](../../../docs/contracts.md) is the source of truth for the shared Ports, common interfaces, module loader, and their method signatures.
 
-`registry.js` exports `registerPort(name, implementation)` and `getPort(name, { optional })`. Registration names must be unique. A required missing Port throws; an optional missing Port returns `null`. Module `init(ctx)` receives an isolated registry at `ctx.contracts`.
+`index.js` exposes `registerPort(name, impl)` and `getPort(name, { optional })`. Each app loader provides its registry through `init(ctx)` as `ctx.contracts`; modules register provider Ports there during initialization and resolve required or optional Ports while handling a request.
 
 ## Ports
 

@@ -55,15 +55,7 @@ Versions are recorded in `package.json`/`package-lock.json`. Verify that `bcrypt
 
 ## Inter-module contracts
 
-`docs/contracts.md` was referenced by the work request but is not present in this repository. Existing project documentation names `CourseService.validateEnrollment(courseId, studentId)` and `QuizResultService.getStudentQuizGrades(courseId, studentId)`; PR 0 keeps those names. The contract JSDoc and fakes additionally establish the following provisional result shapes until the shared contract source is supplied:
-
-- `courseAccess.validateEnrollment` returns `{ courseId, studentId, enrolled }`.
-- `courseAccess.validateCourseOwner` returns `{ courseId, instructorId, isOwner }`.
-- `courseAccess.getLessonSummary` returns `{ id, courseId, title, orderIndex }` or `null`.
-- `quizResults.getStudentQuizGrades` returns a list of `{ quizId, title, score, totalQuestions, correctAnswersCount, status }`.
-- `notifications.notifyCourseStudents(courseId, notification)` returns `{ courseId, notifiedCount }`; notification types include `SCHEDULE_CHANGED`.
-
-The registry rejects duplicate registrations and throws for a missing required Port; `getPort(name, { optional: true })` returns `null`.
+See [`docs/contracts.md`](../docs/contracts.md) for the shared infrastructure and inter-module contract source of truth. The registry rejects duplicate registrations and throws for a missing required Port; `getPort(name, { optional: true })` returns `null`.
 
 ## Configuration and storage notes
 
