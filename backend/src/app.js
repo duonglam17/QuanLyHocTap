@@ -23,7 +23,7 @@ function normalizePath(...segments) {
 }
 
 function canonicalPath(routePath) {
-  return routePath.replace(/:([A-Za-z0-9_]+)(?:\([^)]*\))?([?*+]?)?/g, ':param$2');
+  return routePath.replace(/:([A-Za-z0-9_]+)(?:\([^)]*\))?([?*+]?)?/g, ':param$2').toLowerCase();
 }
 
 function routePaths(routePath) {
@@ -69,6 +69,20 @@ function findLegacyPingLayer(router) {
 
 function registerRoute(routeMap, method, routePath, moduleName) {
   const key = `${method.toUpperCase()} ${canonicalPath(routePath)}`;
+  if (method.toLowerCase() === '_all') {
+    const existingMethod = [...routeMap.keys()].find((existing) =>
+      existing.endsWith(` ${canonicalPath(routePath)}`)
+    );
+    if (existingMethod) {
+      throw new Error(
+        `Trùng route ${existingMethod} và ALL ${canonicalPath(routePath)} giữa các module.`
+      );
+    }
+  } else if (routeMap.has(`ALL ${canonicalPath(routePath)}`)) {
+    throw new Error(
+      `Trùng route ALL và ${method.toUpperCase()} ${canonicalPath(routePath)} giữa các module.`
+    );
+  }
   const previousModule = routeMap.get(key);
   if (previousModule) {
     throw new Error(`Trùng route ${key} giữa module "${previousModule}" và "${moduleName}".`);

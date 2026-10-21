@@ -16,6 +16,7 @@ module.exports = {
   config,
   db,
   logger,
+  ...errors,
   errors,
   errorHandler,
   requireAuth,

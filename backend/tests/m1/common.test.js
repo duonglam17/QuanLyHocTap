@@ -1,6 +1,5 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
-const os = require('node:os');
 const path = require('node:path');
 const express = require('express');
 const jwt = require('jsonwebtoken');
@@ -18,11 +17,12 @@ const createClock = require('../../src/common/clock').createClock;
 const requireAuth = require('../../src/common/authMiddleware');
 const requireRole = require('../../src/common/rbacMiddleware');
 const rateLimit = require('../../src/common/rateLimiter');
-const { ValidationError } = require('../../src/common/errors');
+const db = require('../../src/common/db');
+const { BadRequestError, ConflictError, ValidationError } = require('../../src/common/errors');
 const errorHandler = require('../../src/common/errorHandler');
 const config = require('../../src/common/config');
+const storage = require('../../src/common/storage');
 const sanitizeText = require('../../src/common/sanitizeText');
-const { saveFile } = require('../../src/common/storage');
 const validate = require('../../src/common/validate');
 const withTransaction = require('../../src/common/withTransaction');
 
@@ -31,93 +31,235 @@ test('contract registry handles required and optional ports', () => {
   const implementation = createCourseAccessFake();
 
   assert.throws(() => registry.getPort('courseAccess'), /chưa được đăng ký/);
+  assert.throws(() => registry.getPort('notifications'), /chưa được đăng ký/);
   assert.equal(registry.getPort('notifications', { optional: true }), null);
   registry.registerPort('courseAccess', implementation);
+  registry.registerPort('quizResults', createQuizResultsFake());
+  registry.registerPort('notifications', createNotificationsFake());
   assert.equal(registry.getPort('courseAccess'), implementation);
   assert.throws(() => registry.registerPort('courseAccess', implementation), /đã được đăng ký/);
 });
 
 test('contract fakes expose the declared Port data shapes', async () => {
   const courseAccess = createCourseAccessFake();
-  const quizResults = createQuizResultsFake([
-    {
-      quizId: 9,
-      title: 'Quiz',
-      score: 8,
-      totalQuestions: 10,
-      correctAnswersCount: 8,
-      status: 'SUBMITTED'
+  const quizScore = {
+    studentId: 3,
+    quizId: 9,
+    quizTitle: 'Quiz',
+    maxScore: 10,
+    score: 8,
+    attemptStatus: 'SUBMITTED',
+    submittedAt: '2026-10-21T08:00:00.000Z',
+    visibleToStudent: true
+  };
+  const pendingQuizScore = {
+    studentId: 4,
+    quizId: 9,
+    quizTitle: 'Quiz',
+    maxScore: 10,
+    score: null,
+    attemptStatus: null,
+    submittedAt: null,
+    visibleToStudent: false
+  };
+  const quizResults = createQuizResultsFake({
+    courseScores: {
+      1: [quizScore, pendingQuizScore]
+    },
+    studentScores: {
+      '1:3': [quizScore],
+      '1:4': [pendingQuizScore]
     }
-  ]);
+  });
   const notifications = createNotificationsFake();
 
-  assert.deepEqual(await courseAccess.validateEnrollment(1, 2), {
-    courseId: 1,
-    studentId: 2,
-    enrolled: true
+  assert.deepEqual(await courseAccess.getCourse(1), {
+    id: 1,
+    ownerId: 2,
+    title: 'Fake course',
+    status: 'PUBLISHED'
   });
-  assert.deepEqual(await courseAccess.validateCourseOwner(1, 3), {
-    courseId: 1,
-    instructorId: 3,
-    isOwner: true
+  assert.deepEqual(Object.keys(await courseAccess.getCourse(1)), [
+    'id',
+    'ownerId',
+    'title',
+    'status'
+  ]);
+  assert.equal(await courseAccess.isOwner(2, 1), true);
+  assert.equal(await courseAccess.isEnrolled(3, 1), true);
+  assert.equal(await courseAccess.isEnrolled(4, 1), false);
+  assert.equal(await courseAccess.assertCourseWritable(1), undefined);
+  await assert.rejects(
+    createCourseAccessFake({
+      courses: [{ id: 1, ownerId: 2, title: 'Archived', status: 'ARCHIVED' }]
+    }).assertCourseWritable(1),
+    (error) => error instanceof ConflictError && error.code === 'COURSE_ARCHIVED'
+  );
+  assert.deepEqual(await courseAccess.getEnrolledStudentIds(1), [3]);
+  assert.deepEqual(await courseAccess.listEnrolledStudents(1, { page: 1, limit: 20 }), {
+    items: [{ id: 3, username: 'student', fullName: 'Fake Student' }],
+    total: 1
   });
-  assert.deepEqual(await courseAccess.getLessonSummary(4), {
-    id: 4,
-    courseId: 1,
-    title: 'Fake lesson',
-    orderIndex: 1
-  });
-  assert.deepEqual(await quizResults.getStudentQuizGrades(1, 2), [
+  assert.deepEqual(Object.keys((await courseAccess.listEnrolledStudents(1)).items[0]), [
+    'id',
+    'username',
+    'fullName'
+  ]);
+  assert.deepEqual(await courseAccess.getUsersBrief([3]), [
     {
-      quizId: 9,
-      title: 'Quiz',
-      score: 8,
-      totalQuestions: 10,
-      correctAnswersCount: 8,
-      status: 'SUBMITTED'
+      id: 3,
+      username: 'student',
+      fullName: 'Fake Student',
+      role: 'SINH_VIEN'
     }
   ]);
-  assert.deepEqual(await notifications.notifyCourseStudents(1, { type: 'SCHEDULE_CHANGED' }), {
-    courseId: 1,
-    notifiedCount: 0
+  assert.deepEqual(Object.keys((await courseAccess.getUsersBrief([3]))[0]), [
+    'id',
+    'username',
+    'fullName',
+    'role'
+  ]);
+  assert.deepEqual(await courseAccess.getLessonSummary(4), {
+    id: 4,
+    courseId: 1
   });
-  assert.equal(notifications.sentNotifications.length, 1);
+  assert.equal(await courseAccess.getCourse(99), null);
+  assert.deepEqual(await createCourseAccessFake({ lessonSummary: null }).getLessonSummary(4), null);
+  assert.deepEqual(await quizResults.getQuizScoresForCourse(1, [3, 4]), [
+    quizScore,
+    pendingQuizScore
+  ]);
+  assert.deepEqual(await quizResults.getQuizScoresForStudent(1, 3), [quizScore]);
+  assert.deepEqual(await quizResults.getQuizScoresForStudent(1, 4), [pendingQuizScore]);
+  assert.deepEqual(Object.keys((await quizResults.getQuizScoresForStudent(1, 3))[0]), [
+    'studentId',
+    'quizId',
+    'quizTitle',
+    'maxScore',
+    'score',
+    'attemptStatus',
+    'submittedAt',
+    'visibleToStudent'
+  ]);
+
+  const payload = {
+    type: 'SCHEDULE_CHANGED',
+    title: 'Lịch học đã đổi',
+    message: 'Buổi học được đổi lịch.',
+    refType: 'schedule',
+    refId: 5,
+    link: '/courses/1/schedules'
+  };
+  assert.equal(await notifications.notifyUser(3, payload), undefined);
+  assert.equal(await notifications.notifyCourseStudents(1, payload), undefined);
+  assert.deepEqual(notifications.sentNotifications, [
+    { userId: 3, payload },
+    { courseId: 1, payload }
+  ]);
+  assert.deepEqual(Object.keys(notifications.sentNotifications[0]), ['userId', 'payload']);
+  assert.deepEqual(Object.keys(notifications.sentNotifications[0].payload), [
+    'type',
+    'title',
+    'message',
+    'refType',
+    'refId',
+    'link'
+  ]);
+  assert.equal(payload.type, 'SCHEDULE_CHANGED');
+  assert.ok(
+    ['NEW_ASSIGNMENT', 'ASSIGNMENT_GRADED', 'ANNOUNCEMENT', 'SCHEDULE_CHANGED'].includes(
+      payload.type
+    )
+  );
+  assert.equal(quizScore.maxScore, 10);
+  assert.ok(['SUBMITTED', 'AUTO_SUBMITTED'].includes(quizScore.attemptStatus));
 });
 
-test('validate middleware parses valid input and returns structured errors', async () => {
-  const middleware = validate(z.object({ count: z.coerce.number().int().positive() }));
-  const validRequest = { body: { count: '3' } };
-
+test('validation checks body, query, and params schemas and returns HTTP 422 errors', async () => {
+  const schema = z.object({
+    body: z.object({ name: z.string().min(1) }),
+    query: z.object({ page: z.coerce.number().int().positive() }),
+    params: z.object({ courseId: z.coerce.number().int().positive() })
+  });
+  const middleware = validate(schema);
+  const req = {
+    body: { name: 'Course' },
+    query: { page: '2' },
+    params: { courseId: '7' }
+  };
   await new Promise((resolve, reject) =>
-    middleware(validRequest, {}, (error) => (error ? reject(error) : resolve()))
+    middleware(req, {}, (error) => (error ? reject(error) : resolve()))
   );
-  assert.deepEqual(validRequest.body, { count: 3 });
+  assert.deepEqual(req.body, { name: 'Course' });
+  assert.deepEqual(req.query, { page: 2 });
+  assert.deepEqual(req.params, { courseId: 7 });
 
-  const invalidRequest = { body: { count: 'zero' } };
   await new Promise((resolve) =>
-    middleware(invalidRequest, {}, (error) => {
-      assert.ok(error instanceof ValidationError);
-      assert.equal(error.code, 'VALIDATION_ERROR');
-      assert.ok(Array.isArray(error.details));
-      resolve();
-    })
+    middleware(
+      { body: { name: '' }, query: { page: '0' }, params: { courseId: 'invalid' } },
+      {},
+      (error) => {
+        assert.ok(error instanceof ValidationError);
+        assert.equal(error.statusCode, 422);
+        assert.ok(Array.isArray(error.details));
+        resolve();
+      }
+    )
   );
+  assert.equal(new BadRequestError().statusCode, 400);
 });
 
 test('authentication and role middleware verify signed JWTs and enforce role access', async () => {
   const app = express();
-  app.get('/protected', requireAuth, requireRole(['ADMIN']), (req, res) => {
+  app.get('/protected', requireAuth, requireRole('ADMIN'), (req, res) => {
     res.status(200).json({ id: req.user.id, role: req.user.role });
   });
   app.use(errorHandler);
 
   const adminToken = jwt.sign({ user_id: 17, role: 'ADMIN', token_version: 2 }, config.JWT_SECRET);
-  const studentToken = jwt.sign({ user_id: 18, role: 'SINH_VIEN' }, config.JWT_SECRET);
-  const valid = await request(app).get('/protected').set('Authorization', `Bearer ${adminToken}`);
-  const forbidden = await request(app)
-    .get('/protected')
-    .set('Authorization', `Bearer ${studentToken}`);
-  const invalid = await request(app).get('/protected').set('Authorization', 'Bearer invalid');
+  const studentToken = jwt.sign(
+    { user_id: 18, role: 'SINH_VIEN', token_version: 1 },
+    config.JWT_SECRET
+  );
+  const originalQuery = db.query;
+  db.query = async (sql, parameters) => {
+    assert.match(sql, /status, token_version FROM users/);
+    if (parameters[0] === 18) {
+      return [[{ status: 'ACTIVE', token_version: 1 }], []];
+    }
+    return [[{ status: 'ACTIVE', token_version: 2 }], []];
+  };
+  let valid;
+  let forbidden;
+  let invalid;
+  let locked;
+  let temporarilyLocked;
+  let staleTokenVersion;
+  try {
+    valid = await request(app).get('/protected').set('Authorization', `Bearer ${adminToken}`);
+    forbidden = await request(app).get('/protected').set('Authorization', `Bearer ${studentToken}`);
+    invalid = await request(app).get('/protected').set('Authorization', 'Bearer invalid');
+    const lockedToken = jwt.sign(
+      { user_id: 19, role: 'SINH_VIEN', token_version: 1 },
+      config.JWT_SECRET
+    );
+    db.query = async () => [[{ status: 'LOCKED', token_version: 1 }], []];
+    locked = await request(app).get('/protected').set('Authorization', `Bearer ${lockedToken}`);
+    const temporaryToken = jwt.sign(
+      { user_id: 20, role: 'SINH_VIEN', token_version: 1 },
+      config.JWT_SECRET
+    );
+    db.query = async () => [[{ status: 'TEMPORARY_LOCKED', token_version: 1 }], []];
+    temporarilyLocked = await request(app)
+      .get('/protected')
+      .set('Authorization', `Bearer ${temporaryToken}`);
+    db.query = async () => [[{ status: 'ACTIVE', token_version: 3 }], []];
+    staleTokenVersion = await request(app)
+      .get('/protected')
+      .set('Authorization', `Bearer ${adminToken}`);
+  } finally {
+    db.query = originalQuery;
+  }
 
   assert.equal(valid.status, 200);
   assert.deepEqual(valid.body, { id: 17, role: 'ADMIN' });
@@ -125,11 +267,16 @@ test('authentication and role middleware verify signed JWTs and enforce role acc
   assert.equal(forbidden.body.code, 'FORBIDDEN');
   assert.equal(invalid.status, 401);
   assert.equal(invalid.body.code, 'UNAUTHORIZED');
+  assert.equal(locked.status, 401);
+  assert.equal(temporarilyLocked.status, 401);
+  assert.equal(staleTokenVersion.status, 401);
 });
 
 test('rate limit middleware emits the shared error envelope', async () => {
   const app = express();
-  app.get('/limited', rateLimit({ windowMs: 60_000, limit: 1 }), (req, res) => res.sendStatus(200));
+  app.get('/limited', rateLimit('common-test-limit', { windowMs: 60_000, max: 1 }), (req, res) =>
+    res.sendStatus(200)
+  );
   app.use(errorHandler);
 
   const first = await request(app).get('/limited');
@@ -191,33 +338,60 @@ test('sanitizeText strips markup and executable content', () => {
   assert.throws(() => sanitizeText(null), /chỉ nhận chuỗi/);
 });
 
-test('storage validates extension and magic bytes and saves UUID-named files outside web root', async (t) => {
-  const baseDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'lms-storage-'));
-  t.after(async () => {
-    await fs.rm(baseDirectory, { recursive: true, force: true });
-  });
-
+test('storage validates extension, size and magic bytes and streams/deletes UUID files', async (t) => {
   const pdf = Buffer.from('%PDF-1.7\nLMS test file\n%%EOF');
-  const saved = await saveFile({
-    buffer: pdf,
-    originalName: 'Báo Cáo #1 (Tập 2) !@.pdf',
-    baseDirectory
+  let storedName;
+  let savedStoredName;
+  t.after(async () => {
+    if (storedName) {
+      await storage.deleteFile(storedName);
+    }
   });
-  const savedFiles = await fs.readdir(path.dirname(saved.filePath));
+  const saved = await storage.saveUpload(
+    { buffer: pdf, originalname: 'Báo Cáo #1 (Tập 2) !@.pdf' },
+    {
+      allowedExt: ['.pdf'],
+      allowedMime: ['application/pdf'],
+      maxBytes: 1024
+    }
+  );
+  storedName = saved.storedName;
+  savedStoredName = saved.storedName;
+  assert.match(saved.storedName, /^[0-9a-f-]{36}\.pdf$/i);
+  assert.equal(saved.originalName, 'Báo Cáo #1 (Tập 2) !@.pdf');
+  assert.equal(saved.mime, 'application/pdf');
+  assert.equal(saved.size, pdf.length);
+  await fs.access(path.join(config.UPLOAD_DIR, saved.storedName));
 
-  assert.match(saved.fileUuid, /^[0-9a-f-]{36}$/i);
-  assert.equal(path.basename(saved.filePath), `${saved.fileUuid}.pdf`);
-  assert.equal(saved.originalFilename, 'Báo Cáo #1 (Tập 2) !@.pdf');
-  assert.equal(saved.mimeType, 'application/pdf');
-  assert.equal(savedFiles.length, 1);
+  const stream = storage.openReadStream(saved.storedName);
+  const chunks = [];
+  for await (const chunk of stream) {
+    chunks.push(chunk);
+  }
+  assert.deepEqual(Buffer.concat(chunks), pdf);
+  await storage.deleteFile(saved.storedName);
+  storedName = null;
+  await assert.rejects(fs.access(path.join(config.UPLOAD_DIR, savedStoredName)));
 
   await assert.rejects(
-    saveFile({ buffer: pdf, originalName: 'renamed.exe', baseDirectory }),
+    storage.saveUpload(
+      { buffer: pdf, originalname: 'renamed.exe' },
+      { allowedExt: ['.pdf'], allowedMime: ['application/pdf'], maxBytes: 1024 }
+    ),
     /không được hỗ trợ/
   );
   await assert.rejects(
-    saveFile({ buffer: Buffer.from('not a PDF'), originalName: 'fake.pdf', baseDirectory }),
+    storage.saveUpload(
+      { buffer: pdf, originalname: 'large.pdf' },
+      { allowedExt: ['.pdf'], allowedMime: ['application/pdf'], maxBytes: 1 }
+    ),
+    /vượt quá giới hạn/
+  );
+  await assert.rejects(
+    storage.saveUpload(
+      { buffer: Buffer.from('not a PDF'), originalname: 'fake.pdf' },
+      { allowedExt: ['.pdf'], allowedMime: ['application/pdf'], maxBytes: 1024 }
+    ),
     /không khớp/
   );
-  assert.equal((await fs.readdir(path.dirname(saved.filePath))).length, 1);
 });

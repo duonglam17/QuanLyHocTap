@@ -1,15 +1,43 @@
 const { ValidationError } = require('./errors');
 
-function validate(schema, source = 'body') {
+const inputSources = ['body', 'query', 'params'];
+
+function setRequestInput(req, source, value) {
+  Object.defineProperty(req, source, {
+    configurable: true,
+    enumerable: true,
+    writable: true,
+    value
+  });
+}
+
+function validate(schema) {
   if (!schema || typeof schema.safeParse !== 'function') {
     throw new TypeError('validate yêu cầu một schema có phương thức safeParse().');
   }
-  if (!['body', 'params', 'query'].includes(source)) {
-    throw new TypeError('source phải là body, params hoặc query.');
-  }
 
   return (req, res, next) => {
-    const result = schema.safeParse(req[source]);
+    const requestInput = Object.fromEntries(
+      inputSources.map((source) => [source, req[source] || {}])
+    );
+    const structuredResult = schema.safeParse(requestInput);
+
+    if (structuredResult.success) {
+      for (const source of inputSources) {
+        if (Object.hasOwn(structuredResult.data, source)) {
+          setRequestInput(req, source, structuredResult.data[source]);
+        }
+      }
+      return next();
+    }
+
+    const mergedInput = Object.assign(
+      {},
+      requestInput.params,
+      requestInput.query,
+      requestInput.body
+    );
+    const result = schema.safeParse(mergedInput);
     if (!result.success) {
       const details = result.error.issues.map((issue) => ({
         path: issue.path.join('.'),
@@ -19,7 +47,16 @@ function validate(schema, source = 'body') {
       return next(new ValidationError('Dữ liệu đầu vào không hợp lệ', details));
     }
 
-    req[source] = result.data;
+    for (const source of inputSources) {
+      const parsedSource = Object.fromEntries(
+        Object.keys(requestInput[source])
+          .filter((key) => Object.hasOwn(result.data, key))
+          .map((key) => [key, result.data[key]])
+      );
+      if (Object.keys(parsedSource).length > 0) {
+        setRequestInput(req, source, { ...requestInput[source], ...parsedSource });
+      }
+    }
     return next();
   };
 }
