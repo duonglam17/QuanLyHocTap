@@ -4,8 +4,10 @@ const common = require('../../../common');
 const createNotificationController = require('../controllers/notificationController');
 
 const paginationSchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(100).default(20)
+  query: z.object({
+    page: z.coerce.number().int().positive().default(1),
+    limit: z.coerce.number().int().positive().max(100).default(20)
+  })
 });
 const notificationParamsSchema = z.object({
   notificationId: z.string().regex(/^[1-9]\d*$/)
@@ -18,7 +20,7 @@ function createNotificationRoutes(service) {
   router.get(
     '/',
     common.requireAuth,
-    common.validate(paginationSchema, 'query'),
+    common.validate(paginationSchema),
     controller.list
   );
   router.patch(
