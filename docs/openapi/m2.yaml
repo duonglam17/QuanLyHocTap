@@ -2,9 +2,223 @@ openapi: 3.0.3
 info:
   title: LMS Mini M2 API
   version: 1.0.0
-  description: M2 endpoints are documented by the module owner.
+  description: Assignment creation, retrieval, and deletion endpoints for M2.
 servers:
   - url: http://localhost:5000
 tags:
   - name: M2 Assessment
-paths: {}
+paths:
+  /api/m2-assessment/courses/{courseId}/assignments:
+    post:
+      tags: [M2 Assessment]
+      summary: Create an assignment for a course
+      operationId: createCourseAssignment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAssignmentRequest'
+      responses:
+        "201":
+          description: Assignment created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentResponse'
+        "400":
+          description: Invalid assignment data or due date.
+        "401":
+          description: Authentication is required.
+        "403":
+          description: The caller does not own a writable course.
+    get:
+      tags: [M2 Assessment]
+      summary: List assignments for a course
+      operationId: getCourseAssignments
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Assignments for the course.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, count, data]
+                properties:
+                  success:
+                    type: boolean
+                  count:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Assignment'
+        "401":
+          description: Authentication is required.
+  /api/m2-assessment/assignments:
+    post:
+      tags: [M2 Assessment]
+      summary: Create an assignment
+      operationId: createAssignment
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/CreateAssignmentRequest'
+                - type: object
+                  required: [course_id]
+                  properties:
+                    course_id:
+                      type: integer
+      responses:
+        "201":
+          description: Assignment created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentResponse'
+        "400":
+          description: Invalid assignment data or due date.
+        "401":
+          description: Authentication is required.
+        "403":
+          description: The caller does not own a writable course.
+  /api/m2-assessment/assignments/{id}:
+    get:
+      tags: [M2 Assessment]
+      summary: Get an assignment
+      operationId: getAssignment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Assignment details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentResponse'
+        "401":
+          description: Authentication is required.
+        "404":
+          description: Assignment not found.
+    delete:
+      tags: [M2 Assessment]
+      summary: Delete an assignment
+      description: Assignments are soft-deleted to preserve submission history.
+      operationId: deleteAssignment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Assignment soft-deleted.
+        "401":
+          description: Authentication is required.
+        "403":
+          description: The caller does not own the course.
+        "404":
+          description: Assignment not found.
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    CreateAssignmentRequest:
+      type: object
+      required: [title, due_date]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+        due_date:
+          type: string
+          format: date-time
+        max_score:
+          type: number
+          minimum: 0.01
+          maximum: 10
+          default: 10
+        allow_late_submission:
+          type: boolean
+          default: false
+    AssignmentResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/Assignment'
+    Assignment:
+      type: object
+      required: [id, course_id, title, due_date, max_score, allow_late_submission, status]
+      properties:
+        id:
+          type: integer
+        course_id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        due_date:
+          type: string
+          format: date-time
+        deadline:
+          type: string
+          format: date-time
+        max_score:
+          type: number
+        allow_late_submission:
+          type: boolean
+        status:
+          type: string
+          enum: [OPEN, CLOSED]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
