@@ -51,7 +51,7 @@ At startup, the loader inventories router methods and paths (including nested ro
 - `swagger-ui-express` and `yaml`: render and parse the common, M1, M2, and M3 OpenAPI files.
 - `supertest`: HTTP integration tests without starting a separately managed server.
 
-Versions are recorded in `package.json`/`package-lock.json`. Verify that `bcrypt` hashing and comparison work in the target runtime before using password hashing in PR 1.
+Versions are recorded in `package.json`/`package-lock.json`. PR 1 verifies stored password hashes with `bcrypt`.
 
 ## Inter-module contracts
 
@@ -61,4 +61,12 @@ See [`docs/contracts.md`](../docs/contracts.md) for the shared infrastructure an
 
 `.env.example` contains local-only placeholder values, not deployable credentials. Production must supply its own `JWT_SECRET` and database credentials. MySQL pool sizing is restricted to the architecture's 10–30 connection range. Upload storage defaults to `backend/uploads`, is not exposed as a static route, uses UUID filenames, and validates both supported extensions and detected magic bytes. The storage helper removes any partial file if a write or rename fails.
 
-PR 0 does not implement user/course business workflows or DB-backed token-version checks. Those belong to the ordered M1 steps.
+PR 0 provides the shared scaffold. PR 1 implements M1 authentication; course and user-management workflows remain in their ordered steps.
+
+## M1 authentication (PR 1)
+
+- `POST /api/auth/login` accepts `{ "username": "...", "password": "..." }`; the identifier can be a username or email.
+- Successful authentication returns an access JWT (15 minutes), a one-time refresh token (7 days), and the user's role/password-change flag. Only a SHA-256 hash of the refresh token is stored.
+- `POST /api/auth/refresh` rotates a valid refresh token. `POST /api/auth/logout` increments `token_version` and removes all refresh tokens for the authenticated user.
+- Login is limited to five requests per minute per IP. Five consecutive wrong passwords in a ten-minute window temporarily lock the account for 15 minutes. Unknown users and incorrect passwords receive the same response.
+- Apply `database/migrations/202611011000_m1_add_login_failure_window.sql` after the M1 core migration to persist the start of the failed-login window.

@@ -2,12 +2,84 @@ openapi: 3.0.3
 info:
   title: LMS Mini M1 API
   version: 1.0.0
-  description: M1 core health route. Business endpoints are added in their ordered PRs.
+  description: M1 authentication endpoints and module availability route.
 servers:
   - url: http://localhost:5000
 tags:
   - name: M1 Core
 paths:
+  /api/auth/login:
+    post:
+      tags: [M1 Core]
+      summary: Authenticate with username or email and password
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                  description: Username or email address
+                password:
+                  type: string
+                  format: password
+      responses:
+        "200":
+          description: Login succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+        "400":
+          description: Required credentials are missing.
+        "401":
+          description: Credentials are invalid.
+        "403":
+          description: Account is locked or temporarily locked.
+        "429":
+          description: Login rate limit exceeded.
+  /api/auth/refresh:
+    post:
+      tags: [M1 Core]
+      summary: Rotate a refresh token and issue a new access token
+      operationId: refreshSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        "200":
+          description: Session tokens rotated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+        "400":
+          description: Refresh token is missing.
+        "401":
+          description: Refresh token is invalid, expired, or revoked.
+  /api/auth/logout:
+    post:
+      tags: [M1 Core]
+      summary: Revoke all sessions for the authenticated user
+      operationId: logout
+      security:
+        - bearerAuth: []
+      responses:
+        "204":
+          description: All sessions were revoked.
+        "401":
+          description: Authentication is required.
   /api/m1-core/ping:
     get:
       tags: [M1 Core]
@@ -27,3 +99,31 @@ paths:
                   module:
                     type: string
                     example: m1-core
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    AuthSession:
+      type: object
+      required: [accessToken, refreshToken, user]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        user:
+          type: object
+          required: [id, role, must_change_password]
+          properties:
+            id:
+              oneOf:
+                - type: integer
+                - type: string
+            role:
+              type: string
+              enum: [ADMIN, GIANG_VIEN, SINH_VIEN]
+            must_change_password:
+              type: boolean
