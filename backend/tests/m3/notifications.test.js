@@ -5,6 +5,7 @@ const request = require('supertest');
 const test = require('node:test');
 
 const config = require('../../src/common/config');
+const db = require('../../src/common/db');
 const errorHandler = require('../../src/common/errorHandler');
 const sanitizeText = require('../../src/common/sanitizeText');
 const { createRegistry } = require('../../src/contracts');
@@ -146,25 +147,34 @@ test('notification routes list and mark only the authenticated user’s notifica
   const app = express();
   app.use('/api/notifications', createNotificationRoutes(service));
   app.use(errorHandler);
-  const token = jwt.sign({ user_id: 21, role: 'SINH_VIEN' }, config.JWT_SECRET);
+  const token = jwt.sign(
+    { user_id: 21, role: 'SINH_VIEN', token_version: 1 },
+    config.JWT_SECRET
+  );
   const authorization = `Bearer ${token}`;
 
-  const listResponse = await request(app)
-    .get('/api/notifications')
-    .set('Authorization', authorization);
-  assert.equal(listResponse.status, 200);
-  assert.deepEqual(listResponse.body, { items: [], page: 1, limit: 20, total: 0 });
+  const originalQuery = db.query;
+  db.query = async () => [[{ status: 'ACTIVE', token_version: 1 }]];
+  try {
+    const listResponse = await request(app)
+      .get('/api/notifications')
+      .set('Authorization', authorization);
+    assert.equal(listResponse.status, 200);
+    assert.deepEqual(listResponse.body, { items: [], page: 1, limit: 20, total: 0 });
 
-  const readResponse = await request(app)
-    .patch('/api/notifications/43/read')
-    .set('Authorization', authorization);
-  assert.equal(readResponse.status, 200);
-  assert.deepEqual(readResponse.body, { id: '43', isRead: true });
-  assert.deepEqual(calls, [
-    { operation: 'list', userId: 21, pagination: { page: 1, limit: 20 } },
-    { operation: 'read', notificationId: '43', userId: 21 }
-  ]);
+    const readResponse = await request(app)
+      .patch('/api/notifications/43/read')
+      .set('Authorization', authorization);
+    assert.equal(readResponse.status, 200);
+    assert.deepEqual(readResponse.body, { id: '43', isRead: true });
+    assert.deepEqual(calls, [
+      { operation: 'list', userId: 21, pagination: { page: 1, limit: 20 } },
+      { operation: 'read', notificationId: '43', userId: 21 }
+    ]);
 
-  const unauthorizedResponse = await request(app).get('/api/notifications');
-  assert.equal(unauthorizedResponse.status, 401);
+    const unauthorizedResponse = await request(app).get('/api/notifications');
+    assert.equal(unauthorizedResponse.status, 401);
+  } finally {
+    db.query = originalQuery;
+  }
 });

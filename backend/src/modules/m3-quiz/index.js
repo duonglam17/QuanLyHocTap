@@ -11,9 +11,13 @@ const { Router } = require('express');
 const createNotificationRepository = require('./repositories/notificationRepository');
 const { createNotificationService } = require('./services/notificationService');
 const createNotificationRoutes = require('./routes/notificationRoutes');
+const createQuizRepository = require('./repositories/quizRepository');
+const { createQuizService } = require('./services/quizService');
+const createQuizRoutes = require('./routes/quizRoutes');
 
 const router = Router();
 let notificationService;
+let quizService;
 
 const notificationsPort = {
   notifyUser(...args) {
@@ -30,6 +34,21 @@ const notificationsPort = {
   }
 };
 
+const quizRoutesService = {
+  createQuiz(...args) {
+    return quizService.createQuiz(...args);
+  },
+  updateQuestions(...args) {
+    return quizService.updateQuestions(...args);
+  },
+  deleteQuestion(...args) {
+    return quizService.deleteQuestion(...args);
+  },
+  publishQuiz(...args) {
+    return quizService.publishQuiz(...args);
+  }
+};
+
 // Route kiểm tra hoạt động của module M3: GET /api/m3-quiz/ping
 router.get('/ping', (req, res) => {
   res.status(200).json({
@@ -41,6 +60,7 @@ router.get('/ping', (req, res) => {
 });
 
 router.use('/notifications', createNotificationRoutes(notificationsPort));
+router.use(createQuizRoutes(quizRoutesService));
 
 function init(ctx) {
   const repository = createNotificationRepository(ctx.db);
@@ -52,6 +72,14 @@ function init(ctx) {
   });
 
   ctx.contracts.registerPort('notifications', notificationsPort);
+
+  const quizRepository = createQuizRepository(ctx.db);
+  quizService = createQuizService({
+    repository: quizRepository,
+    getCourseAccess: () => ctx.contracts.getPort('courseAccess', { optional: true }),
+    withTransaction: ctx.common.withTransaction,
+    sanitizeText: ctx.common.sanitizeText
+  });
 }
 
 // Sau này các route nghiệp vụ sẽ được gắn tại đây:

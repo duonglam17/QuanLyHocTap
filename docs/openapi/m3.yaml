@@ -9,7 +9,7 @@ tags:
   - name: M3 Quiz
   - name: M3 Notifications
 paths:
-  /notifications:
+  /api/notifications:
     get:
       tags:
         - M3 Notifications
@@ -43,7 +43,7 @@ paths:
                 $ref: '#/components/schemas/NotificationPage'
         '401':
           description: Authentication is required
-  /notifications/{notificationId}/read:
+  /api/notifications/{notificationId}/read:
     patch:
       tags:
         - M3 Notifications
@@ -79,6 +79,178 @@ paths:
           description: Authentication is required
         '404':
           description: Notification does not belong to the authenticated user or does not exist
+  /api/courses/{courseId}/quizzes:
+    post:
+      tags:
+        - M3 Quiz
+      summary: Create a draft quiz and its initial questions
+      operationId: createQuiz
+      security:
+        - bearerAuth: []
+      x-user-story: US-10
+      x-allowed-roles:
+        - GIANG_VIEN
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[1-9]\d*$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateQuizRequest'
+            example:
+              title: Kiem tra giua ky
+              description: Kiem tra chuong 1 den chuong 3
+              duration_minutes: 30
+              open_time: '2026-11-25 08:00:00'
+              close_time: '2026-11-25 10:00:00'
+              show_score_immediately: true
+              questions:
+                - content: Cau hoi mau?
+                  options:
+                    - content: Dap an A
+                      is_correct: true
+                    - content: Dap an B
+                      is_correct: false
+      responses:
+        '201':
+          description: Draft quiz created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quiz'
+        '400':
+          description: Invalid quiz or question data
+        '422':
+          description: Quiz data failed validation
+        '401':
+          description: Authentication is required
+        '403':
+          description: Caller is not the course owner
+        '404':
+          description: Course does not exist
+        '409':
+          description: Course is archived and read-only
+  /api/quizzes/{quizId}/questions:
+    put:
+      tags:
+        - M3 Quiz
+      summary: Replace questions before the quiz has attempts
+      operationId: replaceQuizQuestions
+      security:
+        - bearerAuth: []
+      x-user-story: US-10
+      x-allowed-roles:
+        - GIANG_VIEN
+      parameters:
+        - name: quizId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[1-9]\d*$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - questions
+              properties:
+                questions:
+                  type: array
+                  minItems: 1
+                  items:
+                    $ref: '#/components/schemas/QuizQuestionInput'
+      responses:
+        '200':
+          description: Quiz questions replaced
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quiz'
+        '400':
+          description: Invalid question data
+        '422':
+          description: Question data failed validation
+        '401':
+          description: Authentication is required
+        '403':
+          description: Caller is not the course owner
+        '404':
+          description: Quiz does not exist
+        '409':
+          description: Quiz has attempts or its course is archived
+  /api/questions/{questionId}:
+    delete:
+      tags:
+        - M3 Quiz
+      summary: Delete a question before the quiz has attempts
+      operationId: deleteQuizQuestion
+      security:
+        - bearerAuth: []
+      x-user-story: US-10
+      x-allowed-roles:
+        - GIANG_VIEN
+      parameters:
+        - name: questionId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[1-9]\d*$'
+      responses:
+        '200':
+          description: Question deleted
+        '401':
+          description: Authentication is required
+        '403':
+          description: Caller is not the course owner
+        '404':
+          description: Question does not exist
+        '409':
+          description: Quiz has attempts or cannot be left without questions
+  /api/quizzes/{quizId}/publish:
+    post:
+      tags:
+        - M3 Quiz
+      summary: Publish a draft quiz that has at least one question
+      operationId: publishQuiz
+      security:
+        - bearerAuth: []
+      x-user-story: US-10
+      x-allowed-roles:
+        - GIANG_VIEN
+      parameters:
+        - name: quizId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[1-9]\d*$'
+      responses:
+        '200':
+          description: Quiz published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quiz'
+        '422':
+          description: Quiz must contain at least one question
+        '401':
+          description: Authentication is required
+        '403':
+          description: Caller is not the course owner
+        '404':
+          description: Quiz does not exist
+        '409':
+          description: Quiz is not a draft or its course is archived
 components:
   securitySchemes:
     bearerAuth:
@@ -150,3 +322,136 @@ components:
           type: integer
         total:
           type: integer
+    QuizOptionInput:
+      type: object
+      required:
+        - content
+        - is_correct
+      properties:
+        content:
+          type: string
+          minLength: 1
+        is_correct:
+          type: boolean
+    QuizQuestionInput:
+      type: object
+      description: Each question must have exactly one option with is_correct set to true.
+      required:
+        - content
+        - options
+      properties:
+        content:
+          type: string
+          minLength: 1
+        options:
+          type: array
+          minItems: 2
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/QuizOptionInput'
+    CreateQuizRequest:
+      type: object
+      required:
+        - title
+        - duration_minutes
+        - open_time
+        - close_time
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+        duration_minutes:
+          type: integer
+          minimum: 1
+        open_time:
+          type: string
+          example: '2026-11-25 08:00:00'
+        close_time:
+          type: string
+          example: '2026-11-25 10:00:00'
+        show_score_immediately:
+          type: boolean
+          default: true
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuizQuestionInput'
+    QuizOption:
+      allOf:
+        - $ref: '#/components/schemas/QuizOptionInput'
+        - type: object
+          required:
+            - id
+            - orderIndex
+          properties:
+            id:
+              type: integer
+              format: int64
+            orderIndex:
+              type: integer
+    QuizQuestion:
+      type: object
+      required:
+        - id
+        - content
+        - orderIndex
+        - options
+      properties:
+        id:
+          type: integer
+          format: int64
+        content:
+          type: string
+        orderIndex:
+          type: integer
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuizOption'
+    Quiz:
+      type: object
+      required:
+        - id
+        - courseId
+        - title
+        - durationMinutes
+        - openTime
+        - closeTime
+        - status
+        - questions
+      properties:
+        id:
+          type: integer
+          format: int64
+        courseId:
+          type: integer
+          format: int64
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        durationMinutes:
+          type: integer
+        openTime:
+          type: string
+          format: date-time
+        closeTime:
+          type: string
+          format: date-time
+        showScoreImmediately:
+          type: boolean
+        status:
+          type: string
+          enum:
+            - DRAFT
+            - PUBLISHED
+            - CLOSED
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuizQuestion'
