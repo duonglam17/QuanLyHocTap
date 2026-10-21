@@ -2,9 +2,116 @@ openapi: 3.0.3
 info:
   title: LMS Mini M2 API
   version: 1.0.0
-  description: M2 endpoints are documented by the module owner.
+  description: Assignment and submission endpoints for M2.
 servers:
   - url: http://localhost:5000
 tags:
   - name: M2 Assessment
-paths: {}
+paths:
+  /api/m2-assessment/assignments/{assignmentId}/submissions:
+    post:
+      tags: [M2 Assessment]
+      summary: Submit or resubmit an assignment
+      description: >
+        Accepts one multipart file field named "file". Resubmission updates the
+        student's existing submission row, increments submission_count, and
+        removes the previous stored file after the database transaction commits.
+      operationId: submitAssignment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: assignmentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: Submission created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionResponse'
+        "200":
+          description: Existing submission replaced.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionResponse'
+        "400":
+          description: Missing, invalid, or oversized file, or invalid submission.
+        "401":
+          description: Authentication is required.
+        "403":
+          description: Student is not enrolled, course is archived, or late submission is disabled.
+        "404":
+          description: Assignment not found.
+        "429":
+          description: More than 10 submission requests in one minute.
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    SubmissionResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/Submission'
+    Submission:
+      type: object
+      required:
+        - id
+        - assignment_id
+        - student_id
+        - original_filename
+        - file_size_bytes
+        - mime_type
+        - submitted_at
+        - is_late
+        - late_minutes
+        - submission_count
+        - status
+      properties:
+        id:
+          type: integer
+        assignment_id:
+          type: integer
+        student_id:
+          type: integer
+        original_filename:
+          type: string
+        file_size_bytes:
+          type: integer
+        mime_type:
+          type: string
+        submitted_at:
+          type: string
+          format: date-time
+        is_late:
+          type: boolean
+        late_minutes:
+          type: integer
+        submission_count:
+          type: integer
+        status:
+          type: string
+          enum: [SUBMITTED, SUBMITTED_LATE, GRADED]
