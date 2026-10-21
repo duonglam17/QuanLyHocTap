@@ -14,11 +14,11 @@ function createRegistry() {
       }
       registered.set(name, Object.freeze(implementation));
     },
-    getPort(name, options = {}) {
+    getPort(name, { optional = false } = {}) {
       if (registered.has(name)) {
         return registered.get(name);
       }
-      if (options.optional === true) {
+      if (optional) {
         return null;
       }
       throw new Error(`Port "${name}" chưa được đăng ký.`);

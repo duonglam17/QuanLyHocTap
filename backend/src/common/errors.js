@@ -19,7 +19,13 @@ class AppError extends Error {
 
 class ValidationError extends AppError {
   constructor(message = 'Dữ liệu đầu vào không hợp lệ', details = null) {
-    super(message, 'VALIDATION_ERROR', 400, details);
+    super(message, 'VALIDATION_ERROR', 422, details);
+  }
+}
+
+class BadRequestError extends AppError {
+  constructor(message = 'Yêu cầu không hợp lệ', details = null) {
+    super(message, 'BAD_REQUEST', 400, details);
   }
 }
 
@@ -42,8 +48,8 @@ class NotFoundError extends AppError {
 }
 
 class ConflictError extends AppError {
-  constructor(message = 'Xung đột dữ liệu', details = null) {
-    super(message, 'CONFLICT', 409, details);
+  constructor(message = 'Xung đột dữ liệu', details = null, code = 'CONFLICT') {
+    super(message, code, 409, details);
   }
 }
 
@@ -61,6 +67,7 @@ class InternalServerError extends AppError {
 
 module.exports = {
   AppError,
+  BadRequestError,
   ValidationError,
   UnauthorizedError,
   ForbiddenError,
