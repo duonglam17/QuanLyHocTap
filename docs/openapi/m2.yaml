@@ -16,7 +16,7 @@ paths:
       security:
         - bearerAuth: []
       parameters:
-        - name: courseId
+        - name: assignmentId
           in: path
           required: true
           schema:
