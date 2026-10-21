@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+vendor/
+__pycache__/
+.venv/
+
+# Bi mat (khong bao gio commit)
+.env
+.env.*
+!.env.example
+*.pem
+
+# Build, log, coverage
+dist/
+build/
+coverage/
+*.log
+
+# Upload khi chay thu
+uploads/
+
+# IDE va he dieu hanh
+.idea/
+Thumbs.db
