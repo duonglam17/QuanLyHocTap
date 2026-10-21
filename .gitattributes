@@ -1,0 +1,13 @@
+# Thống nhất ký tự xuống dòng (tránh cả file bị đánh dấu thay đổi khi người dùng Windows)
+* text=auto eol=lf
+
+# File nhị phân
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.woff binary
+*.woff2 binary

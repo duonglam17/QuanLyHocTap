@@ -1,0 +1,45 @@
+# QUY ƯỚC
+# - Người viết code là chủ của module/thư mục đó (xem docs/WORKFLOW.md).
+# - CODEOWNERS dùng để TỰ ĐỘNG GỌI NGƯỜI DUYỆT CHÉO, không phải để phân quyền sửa.
+# - Vòng duyệt chéo: M1 (A) do C duyệt, M2 (B) do A duyệt, M3 (C) do B duyệt.
+# - Thay duonglam17, ngocloc642-gif, ducanh-4 bằng username GitHub (giữ dấu @).
+# - Dòng đứng SAU có độ ưu tiên cao hơn dòng đứng trước.
+
+# Mặc định: cả nhóm
+*                                      @duonglam17 @ngocloc642-gif @ducanh-4
+
+# Hạ tầng do A giữ -> B, C duyệt
+/backend/src/common/                   @ngocloc642-gif @ducanh-4
+/backend/src/app.js                    @ngocloc642-gif @ducanh-4
+/docker-compose.yml                    @ngocloc642-gif @ducanh-4
+/.env.example                          @ngocloc642-gif @ducanh-4
+
+# Hạ tầng do B giữ -> A, C duyệt
+/frontend/src/shared/                  @duonglam17 @ducanh-4
+/frontend/src/app/                     @duonglam17 @ducanh-4
+/.github/                              @duonglam17 @ducanh-4
+
+# Module M1 (A) -> C duyệt
+/backend/src/modules/m1-core/          @ducanh-4
+/frontend/src/modules/m1/              @ducanh-4
+/tests/m1/                             @ducanh-4
+/database/migrations/*_m1_*            @ducanh-4
+/docs/openapi/m1.yaml                  @ducanh-4
+
+# Module M2 (B) -> A duyệt
+/backend/src/modules/m2-assessment/    @duonglam17
+/frontend/src/modules/m2/              @duonglam17
+/tests/m2/                             @duonglam17
+/database/migrations/*_m2_*            @duonglam17
+/docs/openapi/m2.yaml                  @duonglam17
+
+# Module M3 (C) -> B duyệt
+/backend/src/modules/m3-quiz/          @ngocloc642-gif
+/frontend/src/modules/m3/              @ngocloc642-gif
+/tests/m3/                             @ngocloc642-gif
+/database/migrations/*_m3_*            @ngocloc642-gif
+/docs/openapi/m3.yaml                  @ngocloc642-gif
+
+# Vùng chung: cả nhóm cùng duyệt
+/backend/src/contracts/                @duonglam17 @ngocloc642-gif @ducanh-4
+/docs/                                 @duonglam17 @ngocloc642-gif @ducanh-4
