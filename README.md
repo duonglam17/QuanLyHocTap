@@ -120,3 +120,31 @@ backend/
 
 Khi một thành viên tạo module mới trong `modules/`, **hoàn toàn không cần sửa tệp `app.js`**, đảm bảo tính độc lập tuyệt đối giữa các thành viên.
 
+---
+
+## Frontend scaffold
+
+Frontend dùng React 18, Vite, React Router, Tailwind CSS và cấu hình tương thích shadcn/ui.
+Hiện tại chỉ có các trang placeholder, layout theo vai trò, route guard dạng khung và route
+tự nạp từ `frontend/src/modules/*/routes/*.jsx`; chưa có giao diện nghiệp vụ hay đăng nhập thật.
+
+### Chạy frontend
+
+```powershell
+cd frontend
+Copy-Item .env.example .env
+npm install
+npm run dev
+```
+
+### Kiểm tra frontend
+
+```powershell
+cd frontend
+npm run lint
+npm test
+npm run build
+```
+
+Để thêm module route, tạo file `routes/*.jsx` trong thư mục module và export một mảng `routes`.
+Router chung sẽ tự phát hiện route qua `import.meta.glob`.
