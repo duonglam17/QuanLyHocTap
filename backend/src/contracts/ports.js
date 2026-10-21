@@ -60,15 +60,27 @@
  * @property {string} quizTitle
  * @property {10} maxScore
  * @property {number|null} score
- * @property {AttemptStatus} attemptStatus
- * @property {string|null} submittedAt
- * @property {boolean} visibleToStudent
+ * @property {number} totalQuestions
+ * @property {number} correctAnswersCount
+ * @property {string} status
+ * @property {boolean} [visibleToStudent]
  */
 
 /**
  * @typedef {Object} QuizResultsPort
- * @property {(courseId: number, studentIds: number[]) => Promise<QuizScore[]>} getQuizScoresForCourse
- * @property {(courseId: number, studentId: number) => Promise<QuizScore[]>} getQuizScoresForStudent
+ * @property {(courseId: number|string, studentId: number|string) => Promise<QuizGrade[]>} getStudentQuizGrades
+ * @property {(courseId: number|string, studentId: number|string) => Promise<QuizScore[]>} getQuizScoresForStudent
+ */
+
+/**
+ * @typedef {Object} QuizScore
+ * @property {number|string} quizId
+ * @property {string} title
+ * @property {number|null} score
+ * @property {number} [maxScore]
+ * @property {string|null} [feedback]
+ * @property {string} [status]
+ * @property {boolean} [visibleToStudent]
  */
 
 /**

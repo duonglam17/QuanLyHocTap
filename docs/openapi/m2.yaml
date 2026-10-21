@@ -2,18 +2,21 @@ openapi: 3.0.3
 info:
   title: LMS Mini M2 API
   version: 1.0.0
-  description: M2 assignment, grading, and class gradebook endpoints.
+  description: M2 assignment, grading, and personal gradebook endpoints.
 servers:
   - url: http://localhost:5000
 tags:
   - name: M2 Assessment
 paths:
-  /api/m2-assessment/courses/{courseId}/gradebook:
+  /api/m2-assessment/courses/{courseId}/my-grades:
     get:
       tags: [M2 Assessment]
-      summary: Get a paginated class gradebook
-      description: Returns 20 enrolled students per page with assignment and quiz scores.
-      operationId: getCourseGradebook
+      summary: Get the authenticated student's personal course gradebook
+      description: >
+        Student identity is derived from the authenticated bearer token.
+        The request does not accept a student_id. Unsubmitted or ungraded
+        assignments have a null score. Quiz scores hidden from students are omitted.
+      operationId: getMyCourseGrades
       security:
         - bearerAuth: []
       parameters:
@@ -22,60 +25,17 @@ paths:
           required: true
           schema:
             type: integer
-        - name: page
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-            default: 1
       responses:
         "200":
-          description: One page of the course gradebook.
+          description: Personal assignment and quiz scores.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ClassGradebookResponse'
+                $ref: '#/components/schemas/StudentGradebookResponse'
         "401":
           description: Authentication is required.
         "403":
-          description: The caller is not the course owner.
-        "503":
-          description: Course roster or quiz results are unavailable.
-  /api/m2-assessment/courses/{courseId}/gradebook/export.csv:
-    get:
-      tags: [M2 Assessment]
-      summary: Stream the complete class gradebook as CSV
-      description: >
-        Streams UTF-8 CSV with BOM. Formula-triggering leading characters are
-        prefixed with an apostrophe to prevent CSV injection.
-      operationId: exportCourseGradebookCsv
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: courseId
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: UTF-8 CSV file stream.
-          headers:
-            Content-Disposition:
-              schema:
-                type: string
-                example: attachment; filename="BangDiem_1.csv"
-          content:
-            text/csv:
-              schema:
-                type: string
-                format: binary
-        "401":
-          description: Authentication is required.
-        "403":
-          description: The caller is not the course owner.
-        "503":
-          description: Course roster or quiz results are unavailable.
+          description: The caller is not a student enrolled in this course.
 components:
   securitySchemes:
     bearerAuth:
@@ -83,65 +43,48 @@ components:
       scheme: bearer
       bearerFormat: JWT
   schemas:
-    ClassGradebookResponse:
+    StudentGradebookResponse:
       type: object
-      required: [success, data, assignments, quizzes, pagination]
+      required: [success, data]
       properties:
         success:
           type: boolean
         data:
-          type: array
-          items:
-            type: object
-            required: [student_id, student_number, full_name, assignments, quizzes]
-            properties:
-              student_id:
-                type: integer
-              student_number:
-                type: string
-                nullable: true
-              full_name:
-                type: string
-                nullable: true
-              assignments:
-                type: object
-                additionalProperties:
-                  type: number
-                  nullable: true
-              quizzes:
-                type: object
-                additionalProperties:
-                  type: number
-                  nullable: true
-        assignments:
-          type: array
-          items:
-            type: object
-            properties:
-              id:
-                type: integer
-              title:
-                type: string
-              max_score:
-                type: number
-        quizzes:
-          type: array
-          items:
-            type: object
-            properties:
-              id:
-                type: integer
-              title:
-                type: string
-        pagination:
           type: object
-          required: [page, page_size, total, total_pages]
+          required: [course_id, assignments, quizzes]
           properties:
-            page:
+            course_id:
               type: integer
-            page_size:
-              type: integer
-            total:
-              type: integer
-            total_pages:
-              type: integer
+            assignments:
+              type: array
+              items:
+                $ref: '#/components/schemas/GradebookItem'
+            quizzes:
+              type: array
+              items:
+                $ref: '#/components/schemas/GradebookItem'
+    GradebookItem:
+      type: object
+      required: [type, id, title, score]
+      properties:
+        type:
+          type: string
+          enum: [ASSIGNMENT, QUIZ]
+        id:
+          type: integer
+        title:
+          type: string
+        score:
+          type: number
+          nullable: true
+        maxScore:
+          type: number
+          nullable: true
+        feedback:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        visibleToStudent:
+          type: boolean

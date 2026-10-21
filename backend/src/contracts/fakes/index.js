@@ -71,15 +71,11 @@ function createCourseAccessFake(overrides = {}) {
 function createQuizResultsFake({ courseScores = {}, studentScores = {} } = {}) {
   const cloneScores = (scores) => scores.map((score) => ({ ...score }));
   return {
-    async getQuizScoresForCourse(courseId, studentIds) {
-      const requestedIds = new Set(studentIds);
-      return cloneScores(courseScores[courseId] || []).filter((score) =>
-        requestedIds.has(score.studentId)
-      );
+    async getStudentQuizGrades() {
+      return grades.map((grade) => ({ ...grade }));
     },
-    async getQuizScoresForStudent(courseId, studentId) {
-      const scores = studentScores[`${courseId}:${studentId}`] || [];
-      return cloneScores(scores);
+    async getQuizScoresForStudent() {
+      return grades.map((grade) => ({ ...grade }));
     }
   };
 }

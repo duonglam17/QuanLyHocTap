@@ -8,10 +8,7 @@
  */
 
 const { Router } = require('express');
-const ClassGradebookController = require('./controllers/classGradebookController');
-const ClassGradebookRepository = require('./repositories/classGradebookRepository');
-const ClassGradebookService = require('./services/classGradebookService');
-const { createClassGradebookRouter } = require('./routes/classGradebookRoutes');
+const { router: studentGradebookRoutes } = require('./routes/studentGradebookRoutes');
 
 const router = Router();
 const classGradebookRoutes = createClassGradebookRouter({
@@ -32,7 +29,7 @@ router.get('/ping', (req, res) => {
   });
 });
 
-router.use('/m2-assessment', classGradebookRoutes);
+router.use('/m2-assessment', studentGradebookRoutes);
 
 // Sau này các route nghiệp vụ sẽ được gắn tại đây:
 // router.use('/assignments', assignmentRoutes);
