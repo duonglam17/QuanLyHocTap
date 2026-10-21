@@ -2,9 +2,89 @@ openapi: 3.0.3
 info:
   title: LMS Mini M2 API
   version: 1.0.0
-  description: M2 endpoints are documented by the module owner.
+  description: M2 assignment, grading, and personal gradebook endpoints.
 servers:
   - url: http://localhost:5000
 tags:
   - name: M2 Assessment
-paths: {}
+paths:
+  /api/m2-assessment/courses/{courseId}/my-grades:
+    get:
+      tags: [M2 Assessment]
+      summary: Get the authenticated student's personal course gradebook
+      description: >
+        Student identity is derived from the authenticated bearer token.
+        The request does not accept a student_id. Unsubmitted or ungraded
+        assignments have a null score. Quiz scores hidden from students are omitted.
+      operationId: getMyCourseGrades
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Personal assignment and quiz scores.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudentGradebookResponse'
+        "401":
+          description: Authentication is required.
+        "403":
+          description: The caller is not a student enrolled in this course.
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    StudentGradebookResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          required: [course_id, assignments, quizzes]
+          properties:
+            course_id:
+              type: integer
+            assignments:
+              type: array
+              items:
+                $ref: '#/components/schemas/GradebookItem'
+            quizzes:
+              type: array
+              items:
+                $ref: '#/components/schemas/GradebookItem'
+    GradebookItem:
+      type: object
+      required: [type, id, title, score]
+      properties:
+        type:
+          type: string
+          enum: [ASSIGNMENT, QUIZ]
+        id:
+          type: integer
+        title:
+          type: string
+        score:
+          type: number
+          nullable: true
+        maxScore:
+          type: number
+          nullable: true
+        feedback:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        visibleToStudent:
+          type: boolean

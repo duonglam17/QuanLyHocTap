@@ -24,6 +24,9 @@ function createQuizResultsFake(grades = []) {
   return {
     async getStudentQuizGrades() {
       return grades.map((grade) => ({ ...grade }));
+    },
+    async getQuizScoresForStudent() {
+      return grades.map((grade) => ({ ...grade }));
     }
   };
 }

@@ -8,6 +8,7 @@
  */
 
 const { Router } = require('express');
+const { router: studentGradebookRoutes } = require('./routes/studentGradebookRoutes');
 
 const router = Router();
 
@@ -21,10 +22,11 @@ router.get('/ping', (req, res) => {
   });
 });
 
+router.use('/m2-assessment', studentGradebookRoutes);
+
 // Sau này các route nghiệp vụ sẽ được gắn tại đây:
 // router.use('/assignments', assignmentRoutes);
 // router.use('/submissions', submissionRoutes);
 // router.use('/gradebook', gradebookRoutes);
 
 module.exports = router;
-
