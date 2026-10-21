@@ -366,3 +366,33 @@ Nhằm đảm bảo tính toàn vẹn dữ liệu (NFR-08, EC-05), các quy trì
    - Bước 2: `DELETE FROM refresh_tokens WHERE user_id = ?`.
    - Bước 3: `COMMIT`.
 
+---
+
+## 6. Kiến trúc Migration & Seed Theo Module (Database Migrations)
+
+Cơ sở dữ liệu được quản lý theo mô hình **Modular Migrations** tuân thủ nguyên tắc độc lập giữa 3 thành viên, loại bỏ việc dùng chung một file `schema.sql` đơn khối:
+
+### 6.1. Phân bổ Bảng theo Module (19 Bảng)
+* **Module M1 (8 bảng):** `roles`, `users`, `refresh_tokens`, `courses`, `enrollments`, `lessons`, `materials`, `schedules`.
+  * *Ghi chú:* Bảng `refresh_tokens` thuộc M1 vì gắn liền với vòng đời xác thực của thực thể `User`.
+* **Module M2 (3 bảng):** `assignments`, `submissions`, `grades`.
+  * *Ghi chú:* Chứa khóa ngoại trỏ tới `courses.id` và `users.id` của M1.
+* **Module M3 (8 bảng):** `quizzes`, `questions`, `options`, `attempts`, `attempt_answers`, `announcements`, `discussions`, `notifications`.
+  * *Ghi chú:* Bảng `notifications` thuộc M3 vì phục vụ nhóm chức năng Tương tác & Thông báo (E6), chứa khóa ngoại trỏ tới `users.id` và `courses.id` của M1.
+
+### 6.2. Danh mục File Migrations (`database/migrations/`)
+Được sắp xếp theo thứ tự timestamp đảm bảo bảng cha luôn được tạo trước bảng con:
+1. `202611010900_m1_create_core_tables.sql` (8 bảng M1)
+2. `202611011000_m2_create_assignment_tables.sql` (3 bảng M2)
+3. `202611011100_m3_create_quiz_interaction_tables.sql` (8 bảng M3)
+
+### 6.3. Danh mục File Seeds (`database/seeds/`)
+1. `202611010900_m1_seed_core.sql` (Roles, Users mẫu, Course INT3101, Enrollments, Lessons, Materials, Schedules)
+2. `202611011000_m2_seed_assignments.sql` (Assignment mẫu, Submission mẫu, Grade mẫu)
+3. `202611011100_m3_seed_quizzes_interactions.sql` (Quiz 3 câu hỏi kèm 12 options, Announcements, Discussions, Notifications)
+
+### 6.4. Công cụ Chạy Migration (`database/migrate.js`) & Lưu trữ Archive
+* **Công cụ chạy:** `database/migrate.js` (chạy tuần tự, idempotent qua bảng `schema_migrations`) và `database/seed.js`.
+* **File lưu trữ tham chiếu:** File `schema.sql` và `seed.sql` gốc được di chuyển an toàn vào `database/archive/schema.initial.sql` và `database/archive/seed.initial.sql` để bảo đảm tính duy nhất của nguồn sự thật (Single Source of Truth).
+
+
