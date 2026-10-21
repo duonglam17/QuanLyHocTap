@@ -17,11 +17,16 @@ function createCourseAccessFake(overrides = {}) {
         orderIndex: overrides.lessonSummary?.orderIndex ?? 1
       };
     },
-    async getUsersBrief(userIds) {
-      return userIds.map((id) => {
-        const user = overrides.usersBrief?.find((item) => String(item.id) === String(id));
-        return user || { id, fullName: `Student ${id}` };
-      });
+    async listEnrolledStudents(courseId, { page = 1, pageSize = 20 } = {}) {
+      const students = overrides.students || [
+        { id: 1, studentNumber: 'SV001', fullName: 'Fake Student' }
+      ];
+      const start = (page - 1) * pageSize;
+      return {
+        students: students.slice(start, start + pageSize).map((student) => ({ ...student })),
+        total: students.length,
+        courseId
+      };
     }
   };
 }
@@ -29,6 +34,9 @@ function createCourseAccessFake(overrides = {}) {
 function createQuizResultsFake(grades = []) {
   return {
     async getStudentQuizGrades() {
+      return grades.map((grade) => ({ ...grade }));
+    },
+    async getQuizScoresForCourse() {
       return grades.map((grade) => ({ ...grade }));
     }
   };

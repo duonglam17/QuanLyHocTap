@@ -11,7 +11,9 @@ The detailed source `docs/contracts.md` referenced in the implementation request
 - `courseAccess.validateEnrollment(courseId, studentId)` resolves to `{ courseId, studentId, enrolled }`.
 - `courseAccess.validateCourseOwner(courseId, instructorId)` resolves to `{ courseId, instructorId, isOwner }`.
 - `courseAccess.getLessonSummary(lessonId)` resolves to `{ id, courseId, title, orderIndex }` or `null`.
+- `courseAccess.listEnrolledStudents(courseId, { page, pageSize })` resolves to `{ students, total }` for the requested roster page.
 - `quizResults.getStudentQuizGrades(courseId, studentId)` resolves to an array of `{ quizId, title, score, totalQuestions, correctAnswersCount, status }`.
+- `quizResults.getQuizScoresForCourse(courseId)` resolves to rows containing `{ quizId, title, studentId, score }` for the course.
 - `notifications.notifyCourseStudents(courseId, notification)` resolves to `{ courseId, notifiedCount }`. The notification object has `type`, `title`, `content`, and optional `metadata`; `SCHEDULE_CHANGED` is a supported event name.
 
 JSDoc signatures are in `ports.js`; reusable test doubles are in `fakes/`. Update both production and fake implementations together when the module owners agree on any contract change.

@@ -2,21 +2,22 @@ openapi: 3.0.3
 info:
   title: LMS Mini M2 API
   version: 1.0.0
-  description: M2 assignment, submission, and grading endpoints.
+  description: M2 assignment, grading, and class gradebook endpoints.
 servers:
   - url: http://localhost:5000
 tags:
   - name: M2 Assessment
 paths:
-  /api/m2-assessment/courses/{courseId}/submissions:
+  /api/m2-assessment/courses/{courseId}/gradebook:
     get:
       tags: [M2 Assessment]
-      summary: List paginated submissions for a course
-      operationId: listCourseSubmissions
+      summary: Get a paginated class gradebook
+      description: Returns 20 enrolled students per page with assignment and quiz scores.
+      operationId: getCourseGradebook
       security:
         - bearerAuth: []
       parameters:
-        - name: assignmentId
+        - name: courseId
           in: path
           required: true
           schema:
@@ -27,99 +28,54 @@ paths:
             type: integer
             minimum: 1
             default: 1
-        - name: page_size
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
       responses:
         "200":
-          description: Paginated submissions with brief student names.
+          description: One page of the course gradebook.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SubmissionListResponse'
+                $ref: '#/components/schemas/ClassGradebookResponse'
         "401":
           description: Authentication is required.
         "403":
-          description: The caller does not own the course.
-  /api/m2-assessment/submissions/{submissionId}/download:
+          description: The caller is not the course owner.
+        "503":
+          description: Course roster or quiz results are unavailable.
+  /api/m2-assessment/courses/{courseId}/gradebook/export.csv:
     get:
       tags: [M2 Assessment]
-      summary: Download a submission file
-      description: The course owner is authorized before the file is streamed.
-      operationId: downloadSubmission
+      summary: Stream the complete class gradebook as CSV
+      description: >
+        Streams UTF-8 CSV with BOM. Formula-triggering leading characters are
+        prefixed with an apostrophe to prevent CSV injection.
+      operationId: exportCourseGradebookCsv
       security:
         - bearerAuth: []
       parameters:
-        - name: submissionId
+        - name: courseId
           in: path
           required: true
           schema:
             type: integer
       responses:
         "200":
-          description: Submission file stream.
+          description: UTF-8 CSV file stream.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="BangDiem_1.csv"
           content:
-            application/octet-stream:
+            text/csv:
               schema:
                 type: string
                 format: binary
         "401":
           description: Authentication is required.
         "403":
-          description: The caller does not own the course.
-        "404":
-          description: Submission or file not found.
-  /api/m2-assessment/submissions/{submissionId}/grade:
-    post:
-      tags: [M2 Assessment]
-      summary: Grade or update the grade for a submission
-      description: >
-        Grades are stored one-to-one with submissions. Regrading updates the
-        existing grade row and preserves its original graded_at timestamp.
-        The student is notified only after the database transaction commits.
-      operationId: gradeSubmission
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: submissionId
-          in: path
-          required: true
-          schema:
-            type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [score]
-              properties:
-                score:
-                  type: number
-                  minimum: 0
-                  maximum: 10
-                  multipleOf: 0.25
-                feedback:
-                  type: string
-      responses:
-        "200":
-          description: Grade saved or updated.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GradeResponse'
-        "400":
-          description: Invalid score or feedback.
-        "401":
-          description: Authentication is required.
-        "403":
-          description: The caller does not own the course.
-        "404":
-          description: Submission not found.
+          description: The caller is not the course owner.
+        "503":
+          description: Course roster or quiz results are unavailable.
 components:
   securitySchemes:
     bearerAuth:
@@ -127,9 +83,9 @@ components:
       scheme: bearer
       bearerFormat: JWT
   schemas:
-    SubmissionListResponse:
+    ClassGradebookResponse:
       type: object
-      required: [success, data, pagination]
+      required: [success, data, assignments, quizzes, pagination]
       properties:
         success:
           type: boolean
@@ -137,25 +93,46 @@ components:
           type: array
           items:
             type: object
+            required: [student_id, student_number, full_name, assignments, quizzes]
+            properties:
+              student_id:
+                type: integer
+              student_number:
+                type: string
+                nullable: true
+              full_name:
+                type: string
+                nullable: true
+              assignments:
+                type: object
+                additionalProperties:
+                  type: number
+                  nullable: true
+              quizzes:
+                type: object
+                additionalProperties:
+                  type: number
+                  nullable: true
+        assignments:
+          type: array
+          items:
+            type: object
             properties:
               id:
                 type: integer
-              assignment_id:
-                type: integer
-              student_id:
-                type: integer
-              student_name:
+              title:
                 type: string
-                nullable: true
-              status:
-                type: string
-                enum: [SUBMITTED, SUBMITTED_LATE, GRADED]
-              score:
+              max_score:
                 type: number
-                nullable: true
-              feedback:
+        quizzes:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              title:
                 type: string
-                nullable: true
         pagination:
           type: object
           required: [page, page_size, total, total_pages]
@@ -168,33 +145,3 @@ components:
               type: integer
             total_pages:
               type: integer
-    GradeResponse:
-      type: object
-      required: [success, data]
-      properties:
-        success:
-          type: boolean
-        message:
-          type: string
-        data:
-          $ref: '#/components/schemas/Grade'
-    Grade:
-      type: object
-      required: [id, submission_id, graded_by, score, feedback, graded_at, updated_at]
-      properties:
-        id:
-          type: integer
-        submission_id:
-          type: integer
-        graded_by:
-          type: integer
-        score:
-          type: number
-        feedback:
-          type: string
-        graded_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time

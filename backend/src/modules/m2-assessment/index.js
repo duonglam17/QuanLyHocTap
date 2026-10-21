@@ -8,9 +8,19 @@
  */
 
 const { Router } = require('express');
-const { router: gradeRoutes } = require('./routes/gradeRoutes');
+const ClassGradebookController = require('./controllers/classGradebookController');
+const ClassGradebookRepository = require('./repositories/classGradebookRepository');
+const ClassGradebookService = require('./services/classGradebookService');
+const { createClassGradebookRouter } = require('./routes/classGradebookRoutes');
 
 const router = Router();
+const classGradebookRoutes = createClassGradebookRouter({
+  controller: new ClassGradebookController(
+    new ClassGradebookService({
+      gradebookRepository: new ClassGradebookRepository()
+    })
+  )
+});
 
 // Route kiểm tra hoạt động của module M2: GET /api/m2-assessment/ping
 router.get('/ping', (req, res) => {
@@ -22,7 +32,7 @@ router.get('/ping', (req, res) => {
   });
 });
 
-router.use('/m2-assessment', gradeRoutes);
+router.use('/m2-assessment', classGradebookRoutes);
 
 // Sau này các route nghiệp vụ sẽ được gắn tại đây:
 // router.use('/assignments', assignmentRoutes);
