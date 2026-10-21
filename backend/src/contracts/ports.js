@@ -25,6 +25,20 @@
  * @property {(courseId: number|string, studentId: number|string) => Promise<EnrollmentValidation>} validateEnrollment
  * @property {(courseId: number|string, instructorId: number|string) => Promise<CourseOwnerValidation>} validateCourseOwner
  * @property {(lessonId: number|string) => Promise<LessonSummary|null>} getLessonSummary
+ * @property {(courseId: number|string, options: {page: number, pageSize: number}) => Promise<EnrolledStudentsPage>} listEnrolledStudents
+ */
+
+/**
+ * @typedef {Object} EnrolledStudent
+ * @property {number|string} id
+ * @property {string} [studentNumber]
+ * @property {string} [fullName]
+ */
+
+/**
+ * @typedef {Object} EnrolledStudentsPage
+ * @property {EnrolledStudent[]} students
+ * @property {number} total
  */
 
 /**
@@ -40,6 +54,14 @@
 /**
  * @typedef {Object} QuizResultsPort
  * @property {(courseId: number|string, studentId: number|string) => Promise<QuizGrade[]>} getStudentQuizGrades
+ * @property {(courseId: number|string) => Promise<CourseQuizScore[]>} getQuizScoresForCourse
+ */
+
+/**
+ * @typedef {Object} CourseQuizScore
+ * @property {number|string} quizId
+ * @property {number|string} studentId
+ * @property {number|null} score
  */
 
 /**
