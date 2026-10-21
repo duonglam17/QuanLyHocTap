@@ -8,8 +8,27 @@
  */
 
 const { Router } = require('express');
+const createNotificationRepository = require('./repositories/notificationRepository');
+const { createNotificationService } = require('./services/notificationService');
+const createNotificationRoutes = require('./routes/notificationRoutes');
 
 const router = Router();
+let notificationService;
+
+const notificationsPort = {
+  notifyUser(...args) {
+    return notificationService.notifyUser(...args);
+  },
+  notifyCourseStudents(...args) {
+    return notificationService.notifyCourseStudents(...args);
+  },
+  getNotifications(...args) {
+    return notificationService.getNotifications(...args);
+  },
+  markNotificationRead(...args) {
+    return notificationService.markNotificationRead(...args);
+  }
+};
 
 // Route kiểm tra hoạt động của module M3: GET /api/m3-quiz/ping
 router.get('/ping', (req, res) => {
@@ -21,11 +40,24 @@ router.get('/ping', (req, res) => {
   });
 });
 
+router.use('/notifications', createNotificationRoutes(notificationsPort));
+
+function init(ctx) {
+  const repository = createNotificationRepository(ctx.db);
+  notificationService = createNotificationService({
+    repository,
+    getCourseAccess: () => ctx.contracts.getPort('courseAccess', { optional: true }),
+    logger: ctx.logger,
+    sanitizeText: ctx.common.sanitizeText
+  });
+
+  ctx.contracts.registerPort('notifications', notificationsPort);
+}
+
 // Sau này các route nghiệp vụ sẽ được gắn tại đây:
 // router.use('/quizzes', quizRoutes);
 // router.use('/attempts', attemptRoutes);
 // router.use('/announcements', announcementRoutes);
 // router.use('/discussions', discussionRoutes);
 
-module.exports = router;
-
+module.exports = { router, init };

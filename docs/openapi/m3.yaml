@@ -7,4 +7,146 @@ servers:
   - url: http://localhost:5000
 tags:
   - name: M3 Quiz
-paths: {}
+  - name: M3 Notifications
+paths:
+  /notifications:
+    get:
+      tags:
+        - M3 Notifications
+      summary: List the authenticated user's notifications
+      operationId: listMyNotifications
+      security:
+        - bearerAuth: []
+      x-user-story: US-07
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Notifications belonging to the authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPage'
+        '401':
+          description: Authentication is required
+  /notifications/{notificationId}/read:
+    patch:
+      tags:
+        - M3 Notifications
+      summary: Mark one of the authenticated user's notifications as read
+      operationId: markMyNotificationRead
+      security:
+        - bearerAuth: []
+      x-user-story: US-07
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[1-9]\d*$'
+      responses:
+        '200':
+          description: Notification marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - id
+                  - isRead
+                properties:
+                  id:
+                    type: string
+                  isRead:
+                    type: boolean
+                    example: true
+        '401':
+          description: Authentication is required
+        '404':
+          description: Notification does not belong to the authenticated user or does not exist
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Notification:
+      type: object
+      required:
+        - id
+        - userId
+        - title
+        - message
+        - type
+        - isRead
+        - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        courseId:
+          type: integer
+          format: int64
+          nullable: true
+        title:
+          type: string
+        message:
+          type: string
+        type:
+          type: string
+          enum:
+            - NEW_ASSIGNMENT
+            - ASSIGNMENT_GRADED
+            - ANNOUNCEMENT
+            - SCHEDULE_CHANGED
+        refType:
+          type: string
+          nullable: true
+        refId:
+          type: string
+          nullable: true
+        link:
+          type: string
+          nullable: true
+        isRead:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    NotificationPage:
+      type: object
+      required:
+        - items
+        - page
+        - limit
+        - total
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
