@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: lms_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password_123
+      MYSQL_DATABASE: lms_mini_db
+      MYSQL_USER: lms_user
+      MYSQL_PASSWORD: lms_password_123
+      TZ: "Asia/Ho_Chi_Minh"
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+07:00
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/migrations/202611010900_m1_create_core_tables.sql:/docker-entrypoint-initdb.d/01_m1.sql
+      - ./database/migrations/202611011000_m2_create_assignment_tables.sql:/docker-entrypoint-initdb.d/02_m2.sql
+      - ./database/migrations/202611011100_m3_create_quiz_interaction_tables.sql:/docker-entrypoint-initdb.d/03_m3.sql
+      - ./database/seeds/202611010900_m1_seed_core.sql:/docker-entrypoint-initdb.d/04_seed_m1.sql
+      - ./database/seeds/202611011000_m2_seed_assignments.sql:/docker-entrypoint-initdb.d/05_seed_m2.sql
+      - ./database/seeds/202611011100_m3_seed_quizzes_interactions.sql:/docker-entrypoint-initdb.d/06_seed_m3.sql
+    networks:
+      - lms_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "lms_user", "-plms_password_123"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lms_backend
+    restart: always
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      TZ: "Asia/Ho_Chi_Minh"
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: lms_user
+      DB_PASSWORD: lms_password_123
+      DB_NAME: lms_mini_db
+      JWT_SECRET: your_jwt_super_secret_key_change_in_prod
+      JWT_EXPIRES_IN: 15m
+      REFRESH_TOKEN_EXPIRES_IN: 7d
+      UPLOAD_DIR: /app/uploads
+      CORS_ORIGIN: "http://localhost:3000,http://localhost:5173"
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - file_uploads:/app/uploads
+    networks:
+      - lms_network
+
+networks:
+  lms_network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  file_uploads:
+
