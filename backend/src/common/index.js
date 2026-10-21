@@ -1,26 +1,29 @@
-/**
- * =============================================================================
- * CENTRALIZED COMMON MODULE EXPORTS (backend/src/common/index.js)
- * =============================================================================
- */
-
-const env = require('./env');
+const config = require('./config');
 const db = require('./db');
 const logger = require('./logger');
 const errors = require('./errors');
 const errorHandler = require('./errorHandler');
-const authMiddleware = require('./authMiddleware');
-const rbacMiddleware = require('./rbacMiddleware');
-const rateLimiter = require('./rateLimiter');
+const requireAuth = require('./authMiddleware');
+const requireRole = require('./rbacMiddleware');
+const rateLimit = require('./rateLimiter');
+const validate = require('./validate');
+const withTransaction = require('./withTransaction');
+const clock = require('./clock');
+const sanitizeText = require('./sanitizeText');
+const storage = require('./storage');
 
 module.exports = {
-  env,
+  config,
   db,
   logger,
   errors,
   errorHandler,
-  authMiddleware,
-  rbacMiddleware,
-  rateLimiter
+  requireAuth,
+  requireRole,
+  rateLimit,
+  validate,
+  withTransaction,
+  clock,
+  sanitizeText,
+  storage
 };
-

@@ -1,36 +1,27 @@
-/**
- * =============================================================================
- * ROLE-BASED ACCESS CONTROL (RBAC) MIDDLEWARE (backend/src/common/rbacMiddleware.js)
- * =============================================================================
- * Middleware kiểm tra quyền truy cập theo vai trò (Khung cơ sở).
- * Sử dụng: rbacMiddleware(['ADMIN', 'GIANG_VIEN'])
- * =============================================================================
- */
-
 const { ForbiddenError, UnauthorizedError } = require('./errors');
 
-function rbacMiddleware(allowedRoles = []) {
+function requireRole(allowedRoles = []) {
+  if (!Array.isArray(allowedRoles) || allowedRoles.some((role) => typeof role !== 'string')) {
+    throw new TypeError('allowedRoles phải là mảng các tên vai trò.');
+  }
+
   return (req, res, next) => {
     if (!req.user) {
       return next(new UnauthorizedError('Yêu cầu xác thực danh tính trước khi kiểm tra quyền'));
     }
 
-    if (!allowedRoles || allowedRoles.length === 0) {
+    if (allowedRoles.length === 0 || allowedRoles.includes(req.user.role)) {
       return next();
     }
 
-    if (!allowedRoles.includes(req.user.role)) {
-      return next(
-        new ForbiddenError(
-          `Vai trò [${req.user.role}] không có quyền truy cập endpoint này`,
-          { requiredRoles: allowedRoles, currentRole: req.user.role }
-        )
-      );
-    }
-
-    next();
+    return next(
+      new ForbiddenError(`Vai trò [${req.user.role}] không có quyền truy cập endpoint này`, {
+        requiredRoles: allowedRoles,
+        currentRole: req.user.role
+      })
+    );
   };
 }
 
-module.exports = rbacMiddleware;
-
+module.exports = requireRole;
+module.exports.requireRole = requireRole;

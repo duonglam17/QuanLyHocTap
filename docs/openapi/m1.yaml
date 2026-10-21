@@ -1,0 +1,29 @@
+openapi: 3.0.3
+info:
+  title: LMS Mini M1 API
+  version: 1.0.0
+  description: M1 core health route. Business endpoints are added in their ordered PRs.
+servers:
+  - url: http://localhost:5000
+tags:
+  - name: M1 Core
+paths:
+  /api/m1-core/ping:
+    get:
+      tags: [M1 Core]
+      summary: Check M1 module availability
+      operationId: getM1Ping
+      responses:
+        "200":
+          description: M1 module is operational.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  module:
+                    type: string
+                    example: m1-core

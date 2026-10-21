@@ -1,0 +1,10 @@
+openapi: 3.0.3
+info:
+  title: LMS Mini M3 API
+  version: 1.0.0
+  description: M3 endpoints are documented by the module owner.
+servers:
+  - url: http://localhost:5000
+tags:
+  - name: M3 Quiz
+paths: {}

@@ -53,6 +53,12 @@ class TooManyRequestsError extends AppError {
   }
 }
 
+class InternalServerError extends AppError {
+  constructor(message = 'Đã có lỗi xảy ra phía máy chủ', details = null) {
+    super(message, 'INTERNAL_ERROR', 500, details);
+  }
+}
+
 module.exports = {
   AppError,
   ValidationError,
@@ -60,6 +66,6 @@ module.exports = {
   ForbiddenError,
   NotFoundError,
   ConflictError,
-  TooManyRequestsError
+  TooManyRequestsError,
+  InternalServerError
 };
-

@@ -1,0 +1,56 @@
+openapi: 3.0.3
+info:
+  title: LMS Mini Common API
+  version: 1.0.0
+  description: Shared health endpoint, authentication scheme, and error format.
+servers:
+  - url: http://localhost:5000
+paths:
+  /api/health:
+    get:
+      tags: [Common]
+      summary: Check API health
+      operationId: getHealth
+      responses:
+        "200":
+          description: API process is healthy.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, timestamp, uptime]
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy]
+                  timestamp:
+                    type: string
+                    format: date-time
+                  uptime:
+                    type: number
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ApiError:
+      type: object
+      required: [code, message, details]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          nullable: true
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: array
+              items: {}
+      example:
+        code: NOT_FOUND
+        message: Endpoint không tồn tại
+        details: null
