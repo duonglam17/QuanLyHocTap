@@ -25,6 +25,13 @@
  * @property {(courseId: number|string, studentId: number|string) => Promise<EnrollmentValidation>} validateEnrollment
  * @property {(courseId: number|string, instructorId: number|string) => Promise<CourseOwnerValidation>} validateCourseOwner
  * @property {(lessonId: number|string) => Promise<LessonSummary|null>} getLessonSummary
+ * @property {(userIds: Array<number|string>) => Promise<UserBrief[]>} getUsersBrief
+ */
+
+/**
+ * @typedef {Object} UserBrief
+ * @property {number|string} id
+ * @property {string} fullName
  */
 
 /**
@@ -51,6 +58,14 @@
  */
 
 /**
+ * @typedef {Object} UserNotification
+ * @property {string} type
+ * @property {string} title
+ * @property {string} content
+ * @property {Object} [metadata]
+ */
+
+/**
  * @typedef {Object} CourseNotificationResult
  * @property {number|string} courseId
  * @property {number} notifiedCount
@@ -59,6 +74,7 @@
 /**
  * @typedef {Object} NotificationsPort
  * @property {(courseId: number|string, notification: CourseNotification) => Promise<CourseNotificationResult>} notifyCourseStudents
+ * @property {(userId: number|string, notification: UserNotification) => Promise<void>} notifyUser
  */
 
 module.exports = {};
