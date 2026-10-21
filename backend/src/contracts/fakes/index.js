@@ -16,6 +16,12 @@ function createCourseAccessFake(overrides = {}) {
         title: overrides.lessonSummary?.title ?? 'Fake lesson',
         orderIndex: overrides.lessonSummary?.orderIndex ?? 1
       };
+    },
+    async getUsersBrief(userIds) {
+      return userIds.map((id) => {
+        const user = overrides.usersBrief?.find((item) => String(item.id) === String(id));
+        return user || { id, fullName: `Student ${id}` };
+      });
     }
   };
 }
@@ -30,11 +36,16 @@ function createQuizResultsFake(grades = []) {
 
 function createNotificationsFake() {
   const sentNotifications = [];
+  const sentUserNotifications = [];
   return {
     sentNotifications,
+    sentUserNotifications,
     async notifyCourseStudents(courseId, notification) {
       sentNotifications.push({ courseId, notification });
       return { courseId, notifiedCount: 0 };
+    },
+    async notifyUser(userId, notification) {
+      sentUserNotifications.push({ userId, notification });
     }
   };
 }

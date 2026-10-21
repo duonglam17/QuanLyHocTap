@@ -2,21 +2,17 @@ openapi: 3.0.3
 info:
   title: LMS Mini M2 API
   version: 1.0.0
-  description: Assignment and submission endpoints for M2.
+  description: M2 assignment, submission, and grading endpoints.
 servers:
   - url: http://localhost:5000
 tags:
   - name: M2 Assessment
 paths:
-  /api/m2-assessment/assignments/{assignmentId}/submissions:
-    post:
+  /api/m2-assessment/courses/{courseId}/submissions:
+    get:
       tags: [M2 Assessment]
-      summary: Submit or resubmit an assignment
-      description: >
-        Accepts one multipart file field named "file". Resubmission updates the
-        student's existing submission row, increments submission_count, and
-        removes the previous stored file after the database transaction commits.
-      operationId: submitAssignment
+      summary: List paginated submissions for a course
+      operationId: listCourseSubmissions
       security:
         - bearerAuth: []
       parameters:
@@ -25,40 +21,105 @@ paths:
           required: true
           schema:
             type: integer
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [file]
-              properties:
-                file:
-                  type: string
-                  format: binary
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
       responses:
-        "201":
-          description: Submission created.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SubmissionResponse'
         "200":
-          description: Existing submission replaced.
+          description: Paginated submissions with brief student names.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SubmissionResponse'
-        "400":
-          description: Missing, invalid, or oversized file, or invalid submission.
+                $ref: '#/components/schemas/SubmissionListResponse'
         "401":
           description: Authentication is required.
         "403":
-          description: Student is not enrolled, course is archived, or late submission is disabled.
+          description: The caller does not own the course.
+  /api/m2-assessment/submissions/{submissionId}/download:
+    get:
+      tags: [M2 Assessment]
+      summary: Download a submission file
+      description: The course owner is authorized before the file is streamed.
+      operationId: downloadSubmission
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: submissionId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Submission file stream.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          description: Authentication is required.
+        "403":
+          description: The caller does not own the course.
         "404":
-          description: Assignment not found.
-        "429":
-          description: More than 10 submission requests in one minute.
+          description: Submission or file not found.
+  /api/m2-assessment/submissions/{submissionId}/grade:
+    post:
+      tags: [M2 Assessment]
+      summary: Grade or update the grade for a submission
+      description: >
+        Grades are stored one-to-one with submissions. Regrading updates the
+        existing grade row and preserves its original graded_at timestamp.
+        The student is notified only after the database transaction commits.
+      operationId: gradeSubmission
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: submissionId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [score]
+              properties:
+                score:
+                  type: number
+                  minimum: 0
+                  maximum: 10
+                  multipleOf: 0.25
+                feedback:
+                  type: string
+      responses:
+        "200":
+          description: Grade saved or updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GradeResponse'
+        "400":
+          description: Invalid score or feedback.
+        "401":
+          description: Authentication is required.
+        "403":
+          description: The caller does not own the course.
+        "404":
+          description: Submission not found.
 components:
   securitySchemes:
     bearerAuth:
@@ -66,7 +127,48 @@ components:
       scheme: bearer
       bearerFormat: JWT
   schemas:
-    SubmissionResponse:
+    SubmissionListResponse:
+      type: object
+      required: [success, data, pagination]
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              assignment_id:
+                type: integer
+              student_id:
+                type: integer
+              student_name:
+                type: string
+                nullable: true
+              status:
+                type: string
+                enum: [SUBMITTED, SUBMITTED_LATE, GRADED]
+              score:
+                type: number
+                nullable: true
+              feedback:
+                type: string
+                nullable: true
+        pagination:
+          type: object
+          required: [page, page_size, total, total_pages]
+          properties:
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+            total_pages:
+              type: integer
+    GradeResponse:
       type: object
       required: [success, data]
       properties:
@@ -75,43 +177,24 @@ components:
         message:
           type: string
         data:
-          $ref: '#/components/schemas/Submission'
-    Submission:
+          $ref: '#/components/schemas/Grade'
+    Grade:
       type: object
-      required:
-        - id
-        - assignment_id
-        - student_id
-        - original_filename
-        - file_size_bytes
-        - mime_type
-        - submitted_at
-        - is_late
-        - late_minutes
-        - submission_count
-        - status
+      required: [id, submission_id, graded_by, score, feedback, graded_at, updated_at]
       properties:
         id:
           type: integer
-        assignment_id:
+        submission_id:
           type: integer
-        student_id:
+        graded_by:
           type: integer
-        original_filename:
+        score:
+          type: number
+        feedback:
           type: string
-        file_size_bytes:
-          type: integer
-        mime_type:
-          type: string
-        submitted_at:
+        graded_at:
           type: string
           format: date-time
-        is_late:
-          type: boolean
-        late_minutes:
-          type: integer
-        submission_count:
-          type: integer
-        status:
+        updated_at:
           type: string
-          enum: [SUBMITTED, SUBMITTED_LATE, GRADED]
+          format: date-time
