@@ -73,6 +73,14 @@
  */
 
 /**
+ * @typedef {Object} UserNotification
+ * @property {string} type
+ * @property {string} title
+ * @property {string} content
+ * @property {Object} [metadata]
+ */
+
+/**
  * @typedef {Object} CourseNotificationResult
  * @property {number|string} courseId
  * @property {number} notifiedCount
@@ -81,6 +89,7 @@
 /**
  * @typedef {Object} NotificationsPort
  * @property {(courseId: number|string, notification: CourseNotification) => Promise<CourseNotificationResult>} notifyCourseStudents
+ * @property {(userId: number|string, notification: UserNotification) => Promise<void>} notifyUser
  */
 
 module.exports = {};

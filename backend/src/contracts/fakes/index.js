@@ -44,11 +44,16 @@ function createQuizResultsFake(grades = []) {
 
 function createNotificationsFake() {
   const sentNotifications = [];
+  const sentUserNotifications = [];
   return {
     sentNotifications,
+    sentUserNotifications,
     async notifyCourseStudents(courseId, notification) {
       sentNotifications.push({ courseId, notification });
       return { courseId, notifiedCount: 0 };
+    },
+    async notifyUser(userId, notification) {
+      sentUserNotifications.push({ userId, notification });
     }
   };
 }
