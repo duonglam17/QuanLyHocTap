@@ -2,21 +2,25 @@ openapi: 3.0.3
 info:
   title: LMS Mini M2 API
   version: 1.0.0
-  description: Assignment creation, retrieval, and deletion endpoints for M2.
+  description: Assignment and submission endpoints for M2.
 servers:
   - url: http://localhost:5000
 tags:
   - name: M2 Assessment
 paths:
-  /api/m2-assessment/courses/{courseId}/assignments:
+  /api/m2-assessment/assignments/{assignmentId}/submissions:
     post:
       tags: [M2 Assessment]
-      summary: Create an assignment for a course
-      operationId: createCourseAssignment
+      summary: Submit or resubmit an assignment
+      description: >
+        Accepts one multipart file field named "file". Resubmission updates the
+        student's existing submission row, increments submission_count, and
+        removes the previous stored file after the database transaction commits.
+      operationId: submitAssignment
       security:
         - bearerAuth: []
       parameters:
-        - name: courseId
+        - name: assignmentId
           in: path
           required: true
           schema:
@@ -24,131 +28,37 @@ paths:
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
-              $ref: '#/components/schemas/CreateAssignmentRequest'
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
       responses:
         "201":
-          description: Assignment created.
+          description: Submission created.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AssignmentResponse'
+                $ref: '#/components/schemas/SubmissionResponse'
+        "200":
+          description: Existing submission replaced.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionResponse'
         "400":
-          description: Invalid assignment data or due date.
+          description: Missing, invalid, or oversized file, or invalid submission.
         "401":
           description: Authentication is required.
         "403":
-          description: The caller does not own a writable course.
-    get:
-      tags: [M2 Assessment]
-      summary: List assignments for a course
-      operationId: getCourseAssignments
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: courseId
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: Assignments for the course.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [success, count, data]
-                properties:
-                  success:
-                    type: boolean
-                  count:
-                    type: integer
-                  data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Assignment'
-        "401":
-          description: Authentication is required.
-  /api/m2-assessment/assignments:
-    post:
-      tags: [M2 Assessment]
-      summary: Create an assignment
-      operationId: createAssignment
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              allOf:
-                - $ref: '#/components/schemas/CreateAssignmentRequest'
-                - type: object
-                  required: [course_id]
-                  properties:
-                    course_id:
-                      type: integer
-      responses:
-        "201":
-          description: Assignment created.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AssignmentResponse'
-        "400":
-          description: Invalid assignment data or due date.
-        "401":
-          description: Authentication is required.
-        "403":
-          description: The caller does not own a writable course.
-  /api/m2-assessment/assignments/{id}:
-    get:
-      tags: [M2 Assessment]
-      summary: Get an assignment
-      operationId: getAssignment
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: Assignment details.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AssignmentResponse'
-        "401":
-          description: Authentication is required.
+          description: Student is not enrolled, course is archived, or late submission is disabled.
         "404":
           description: Assignment not found.
-    delete:
-      tags: [M2 Assessment]
-      summary: Delete an assignment
-      description: Assignments are soft-deleted to preserve submission history.
-      operationId: deleteAssignment
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: Assignment soft-deleted.
-        "401":
-          description: Authentication is required.
-        "403":
-          description: The caller does not own the course.
-        "404":
-          description: Assignment not found.
+        "429":
+          description: More than 10 submission requests in one minute.
 components:
   securitySchemes:
     bearerAuth:
@@ -156,27 +66,7 @@ components:
       scheme: bearer
       bearerFormat: JWT
   schemas:
-    CreateAssignmentRequest:
-      type: object
-      required: [title, due_date]
-      properties:
-        title:
-          type: string
-          maxLength: 200
-        description:
-          type: string
-        due_date:
-          type: string
-          format: date-time
-        max_score:
-          type: number
-          minimum: 0.01
-          maximum: 10
-          default: 10
-        allow_late_submission:
-          type: boolean
-          default: false
-    AssignmentResponse:
+    SubmissionResponse:
       type: object
       required: [success, data]
       properties:
@@ -185,40 +75,43 @@ components:
         message:
           type: string
         data:
-          $ref: '#/components/schemas/Assignment'
-    Assignment:
+          $ref: '#/components/schemas/Submission'
+    Submission:
       type: object
-      required: [id, course_id, title, due_date, max_score, allow_late_submission, status]
+      required:
+        - id
+        - assignment_id
+        - student_id
+        - original_filename
+        - file_size_bytes
+        - mime_type
+        - submitted_at
+        - is_late
+        - late_minutes
+        - submission_count
+        - status
       properties:
         id:
           type: integer
-        course_id:
+        assignment_id:
           type: integer
-        title:
+        student_id:
+          type: integer
+        original_filename:
           type: string
-        description:
+        file_size_bytes:
+          type: integer
+        mime_type:
           type: string
-          nullable: true
-        due_date:
+        submitted_at:
           type: string
           format: date-time
-        deadline:
-          type: string
-          format: date-time
-        max_score:
-          type: number
-        allow_late_submission:
+        is_late:
           type: boolean
+        late_minutes:
+          type: integer
+        submission_count:
+          type: integer
         status:
           type: string
-          enum: [OPEN, CLOSED]
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-        deleted_at:
-          type: string
-          format: date-time
-          nullable: true
+          enum: [SUBMITTED, SUBMITTED_LATE, GRADED]

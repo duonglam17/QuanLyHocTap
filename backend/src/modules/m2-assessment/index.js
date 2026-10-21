@@ -8,7 +8,7 @@
  */
 
 const { Router } = require('express');
-const { router: assignmentRoutes } = require('./routes/assignmentRoutes');
+const { router: submissionRoutes } = require('./routes/submissionRoutes');
 
 const router = Router();
 
@@ -22,7 +22,11 @@ router.get('/ping', (req, res) => {
   });
 });
 
-// US-07: Giao bài tập & Quản lý bài tập
-router.use('/m2-assessment', assignmentRoutes);
+router.use('/m2-assessment', submissionRoutes);
+
+// Sau này các route nghiệp vụ sẽ được gắn tại đây:
+// router.use('/assignments', assignmentRoutes);
+// router.use('/submissions', submissionRoutes);
+// router.use('/gradebook', gradebookRoutes);
 
 module.exports = router;
