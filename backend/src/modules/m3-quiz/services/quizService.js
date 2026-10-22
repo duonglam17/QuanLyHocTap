@@ -117,6 +117,7 @@ function createQuizService({ repository, getCourseAccess, withTransaction, sanit
         repository.createQuizWithQuestions(
           connection,
           courseId,
+          userId,
           {
             ...data,
             title,
