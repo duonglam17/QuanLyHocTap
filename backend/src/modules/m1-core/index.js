@@ -9,13 +9,33 @@
 
 const { Router } = require('express');
 const AuthController = require('./controllers/authController');
+const CourseController = require('./controllers/courseController');
+const EnrollmentController = require('./controllers/enrollmentController');
 const AuthRepository = require('./repositories/authRepository');
+const CourseRepository = require('./repositories/courseRepository');
+const EnrollmentRepository = require('./repositories/enrollmentRepository');
+const { createCourseRouter } = require('./routes/courseRoutes');
 const { createAuthRouter } = require('./routes/authRoutes');
 const AuthService = require('./services/authService');
+const CourseService = require('./services/courseService');
+const {
+  createCourseAccessPort,
+  getPortAtRequestTime,
+  setCourseAccessPortResolver
+} = require('./services/courseAccessService');
 
 const router = Router();
 const authService = new AuthService({ authRepository: new AuthRepository() });
+const courseRepository = new CourseRepository();
+const courseService = new CourseService({
+  courseRepository,
+  enrollmentRepository: new EnrollmentRepository(),
+  getPortFn: getPortAtRequestTime
+});
+const courseController = new CourseController(courseService);
+const enrollmentController = new EnrollmentController(courseService);
 router.use('/auth', createAuthRouter({ authController: new AuthController(authService) }));
+router.use('/courses', createCourseRouter({ courseController, enrollmentController }));
 
 // Route kiểm tra hoạt động của module M1: GET /api/m1-core/ping
 router.get('/ping', (req, res) => {
@@ -27,8 +47,12 @@ router.get('/ping', (req, res) => {
   });
 });
 
-// Sau này các route nghiệp vụ sẽ được gắn tại đây:
-// router.use('/courses', courseRoutes);
 // router.use('/schedules', scheduleRoutes);
 
-module.exports = router;
+module.exports = {
+  router,
+  init(ctx) {
+    setCourseAccessPortResolver(ctx.contracts.getPort);
+    ctx.contracts.registerPort('courseAccess', createCourseAccessPort(courseRepository));
+  }
+};

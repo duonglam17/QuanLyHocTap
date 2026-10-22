@@ -75,3 +75,12 @@ PR 0 provides the shared scaffold. PR 1 implements M1 authentication; course and
 - `POST /api/auth/refresh` rotates a valid refresh token. `POST /api/auth/logout` increments `token_version` and removes all refresh tokens for the authenticated user.
 - Login is limited to five requests per minute per IP. Five consecutive wrong passwords in a ten-minute window temporarily lock the account for 15 minutes. Unknown users and incorrect passwords receive the same response.
 - Apply `database/migrations/202611011000_m1_add_login_failure_window.sql` after the M1 core migration to persist the start of the failed-login window.
+
+## M1 courses and enrollment (PR 2)
+
+- `POST /api/courses` creates an instructor-owned `DRAFT` course. A unique six-character uppercase alphanumeric enrollment key is generated unless the instructor supplies a case-sensitive 6-8 character key.
+- Instructors can list, view, update, and publish their courses. Students see courses they joined; enrollment keys are not returned in student course views. Owners and admins can archive a course.
+- `DELETE /api/courses/:courseId` never hard-deletes: empty courses are soft-deleted, while courses with M1 content/enrollments or assessment/quiz records are archived.
+- Students join using `POST /api/courses/enroll` with `enrollment_key`. The key comparison is case-sensitive; only published courses accept enrollments. The endpoint is limited to five attempts per IP per minute.
+- An instructor or admin can remove a student using `DELETE /api/courses/:courseId/enrollments/:studentId` only when both optional usage Ports confirm the student has no assessment or quiz records. Missing usage providers conservatively block removal.
+- M1 registers the real `courseAccess` Port during module `init(ctx)`; consumers resolve it through the app's contract registry while handling requests.
