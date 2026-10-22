@@ -102,6 +102,7 @@ test('US-07 creates an assignment transactionally, sanitizes text, and notifies 
 
   assert.equal(persisted.title, 'Essay');
   assert.equal(persisted.description, 'Read  the prompt');
+  assert.equal(persisted.createdBy, 8);
   assert.equal(persisted.maxScore, 10);
   assert.equal(persisted.allowLateSubmission, true);
   assert.equal(persisted.status, 'OPEN');

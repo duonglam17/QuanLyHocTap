@@ -188,6 +188,7 @@ class AssignmentService {
       this.assignmentRepository.create(
         {
           courseId,
+          createdBy: instructorId,
           title: sanitizedTitle,
           description: sanitizedDescription,
           dueDate: dueDateObj,
