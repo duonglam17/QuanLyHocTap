@@ -15,10 +15,11 @@ class AssignmentRepository {
   /**
    * Tạo bài tập mới trong cơ sở dữ liệu (sử dụng câu lệnh tham số hóa)
    */
-  async create({ courseId, title, description, dueDate, maxScore = 10.0, allowLateSubmission = false, status = 'OPEN' }, connection = null) {
+  async create({ courseId, createdBy, title, description, dueDate, maxScore = 10.0, allowLateSubmission = false, status = 'OPEN' }, connection = null) {
     const sql = `
       INSERT INTO \`assignments\` (
         \`course_id\`,
+        \`created_by\`,
         \`title\`,
         \`description\`,
         \`deadline\`,
@@ -27,11 +28,12 @@ class AssignmentRepository {
         \`allow_late\`,
         \`allow_late_submission\`,
         \`status\`
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const params = [
       courseId,
+      createdBy,
       title,
       description || null,
       dueDate,
@@ -175,4 +177,3 @@ class AssignmentRepository {
 }
 
 module.exports = AssignmentRepository;
-
