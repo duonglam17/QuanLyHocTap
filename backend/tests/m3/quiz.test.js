@@ -165,8 +165,9 @@ test('init registers quizUsage with one EXISTS query for each data check', async
   init({
     db,
     logger: { error() {} },
-    common: { sanitizeText },
-    contracts: registry
+    common: { sanitizeText, clock: { now: () => new Date() } },
+    contracts: registry,
+    cron: { schedule: () => ({ stop() {} }) }
   });
 
   const quizUsage = registry.getPort('quizUsage');

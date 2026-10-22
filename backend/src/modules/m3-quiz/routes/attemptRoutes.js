@@ -3,7 +3,8 @@ const common = require('../../../common');
 const createAttemptController = require('../controllers/attemptController');
 const {
   startAttemptSchema,
-  saveAnswerSchema
+  saveAnswerSchema,
+  submitAttemptSchema
 } = require('../validators/attemptSchemas');
 
 function createAttemptRoutes(service) {
@@ -22,6 +23,12 @@ function createAttemptRoutes(service) {
     ...studentOnly,
     common.validate(saveAnswerSchema),
     controller.saveAnswer
+  );
+  router.post(
+    '/attempts/:attemptId/submit',
+    ...studentOnly,
+    common.validate(submitAttemptSchema),
+    controller.submit
   );
 
   return router;

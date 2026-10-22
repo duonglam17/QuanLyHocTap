@@ -39,16 +39,80 @@ function createAttemptRepository(db) {
 
     async findAttemptForUpdate(connection, attemptId) {
       const [rows] = await connection.query(
-        `SELECT id, quiz_id AS quizId, student_id AS studentId,
-                client_instance_id AS clientInstanceId, session_token AS sessionToken,
-                started_at AS startedAt, expires_at AS expiresAt, status,
-                takeover_count AS takeoverCount
-         FROM attempts
-         WHERE id = ?
+        `SELECT a.id, a.quiz_id AS quizId, a.student_id AS studentId,
+                a.client_instance_id AS clientInstanceId, a.session_token AS sessionToken,
+                a.started_at AS startedAt, a.expires_at AS expiresAt, a.submitted_at AS submittedAt,
+                a.total_questions AS totalQuestions,
+                a.correct_answers_count AS correctAnswersCount, a.score,
+                a.status, a.takeover_count AS takeoverCount,
+                q.title AS quizTitle, q.show_score_immediately AS showScoreImmediately,
+                q.close_time AS quizCloseTime, q.status AS quizStatus
+         FROM attempts a
+         JOIN quizzes q ON q.id = a.quiz_id
+         WHERE a.id = ?
          FOR UPDATE`,
         [attemptId]
       );
       return rows[0] || null;
+    },
+
+    async listExpiredAttemptIds(now, limit = 100) {
+      const [rows] = await db.query(
+        `SELECT id
+         FROM attempts
+         WHERE status = 'IN_PROGRESS' AND expires_at <= ?
+         ORDER BY expires_at, id
+         LIMIT ?`,
+        [now, limit]
+      );
+      return rows.map((row) => row.id);
+    },
+
+    async gradeAttempt(connection, quizId, attemptId) {
+      const [rows] = await connection.query(
+        `SELECT COUNT(DISTINCT q.id) AS totalQuestions,
+                COALESCE(SUM(CASE WHEN o.is_correct = TRUE THEN 1 ELSE 0 END), 0)
+                  AS correctAnswersCount
+         FROM questions q
+         LEFT JOIN attempt_answers aa
+           ON aa.question_id = q.id AND aa.attempt_id = ?
+         LEFT JOIN options o
+           ON o.id = aa.selected_option_id AND o.question_id = q.id
+         WHERE q.quiz_id = ?`,
+        [attemptId, quizId]
+      );
+      const totalQuestions = Number(rows[0].totalQuestions);
+      const correctAnswersCount = Number(rows[0].correctAnswersCount);
+      const score =
+        totalQuestions === 0
+          ? 0
+          : Math.round((correctAnswersCount / totalQuestions) * 1000) / 100;
+      return { totalQuestions, correctAnswersCount, score };
+    },
+
+    async completeAttempt(connection, attemptId, result) {
+      const [updateResult] = await connection.query(
+        `UPDATE attempts
+         SET status = ?, submitted_at = ?, total_questions = ?,
+             correct_answers_count = ?, score = ?
+         WHERE id = ? AND status = 'IN_PROGRESS'`,
+        [
+          result.status,
+          result.submittedAt,
+          result.totalQuestions,
+          result.correctAnswersCount,
+          result.score,
+          attemptId
+        ]
+      );
+      return updateResult.affectedRows === 1;
+    },
+
+    async markQuizHasAttempts(connection, quizId) {
+      await connection.query(
+        'UPDATE quizzes SET has_attempts = TRUE WHERE id = ?',
+        [quizId]
+      );
     },
 
     async createAttempt(connection, attempt) {

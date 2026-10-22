@@ -54,8 +54,9 @@ test('init registers a notifications Port and sends course notifications through
       }
     },
     logger: createLogger(),
-    common: { sanitizeText },
-    contracts: registry
+    common: { sanitizeText, clock: { now: () => new Date() } },
+    contracts: registry,
+    cron: { schedule: () => ({ stop() {} }) }
   });
 
   assert.ok(router);
