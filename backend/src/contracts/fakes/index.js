@@ -53,17 +53,6 @@ function createCourseAccessFake(overrides = {}) {
         id: lessonId,
         courseId: overrides.lessonSummary?.courseId ?? 1
       };
-    },
-    async listEnrolledStudents(courseId, { page = 1, pageSize = 20 } = {}) {
-      const students = overrides.students || [
-        { id: 1, studentNumber: 'SV001', fullName: 'Fake Student' }
-      ];
-      const start = (page - 1) * pageSize;
-      return {
-        students: students.slice(start, start + pageSize).map((student) => ({ ...student })),
-        total: students.length,
-        courseId
-      };
     }
   };
 }
@@ -71,18 +60,43 @@ function createCourseAccessFake(overrides = {}) {
 function createQuizResultsFake({ courseScores = {}, studentScores = {} } = {}) {
   const cloneScores = (scores) => scores.map((score) => ({ ...score }));
   return {
-    async getStudentQuizGrades() {
-      return grades.map((grade) => ({ ...grade }));
+    async getQuizScoresForCourse(courseId, studentIds) {
+      const requestedIds = new Set(studentIds);
+      return cloneScores(courseScores[courseId] || []).filter((score) =>
+        requestedIds.has(score.studentId)
+      );
     },
-    async getQuizScoresForStudent() {
-      return grades.map((grade) => ({ ...grade }));
+    async getQuizScoresForStudent(courseId, studentId) {
+      const scores = studentScores[`${courseId}:${studentId}`] || [];
+      return cloneScores(scores);
+    }
+  };
+}
+
+function createAssessmentUsageFake({ courseHasData = false, userHasData = false } = {}) {
+  return {
+    async hasCourseData() {
+      return courseHasData;
+    },
+    async hasUserData() {
+      return userHasData;
+    }
+  };
+}
+
+function createQuizUsageFake({ courseHasData = false, userHasData = false } = {}) {
+  return {
+    async hasCourseData() {
+      return courseHasData;
+    },
+    async hasUserData() {
+      return userHasData;
     }
   };
 }
 
 function createNotificationsFake() {
   const sentNotifications = [];
-  const sentUserNotifications = [];
   return {
     sentNotifications,
     async notifyUser(userId, payload) {
@@ -97,5 +111,7 @@ function createNotificationsFake() {
 module.exports = {
   createCourseAccessFake,
   createQuizResultsFake,
-  createNotificationsFake
+  createNotificationsFake,
+  createAssessmentUsageFake,
+  createQuizUsageFake
 };
