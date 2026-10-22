@@ -1,11 +1,11 @@
-const fs = require('fs');
 const { NotFoundError } = require('../../../common/errors');
 const logger = require('../../../common/logger');
+const storage = require('../../../common/storage');
 
 class GradeController {
-  constructor({ gradeService, fileSystem = fs } = {}) {
+  constructor({ gradeService, storageClient = storage } = {}) {
     this.gradeService = gradeService;
-    this.fileSystem = fileSystem;
+    this.storage = storageClient;
   }
 
   listCourseSubmissions = async (req, res, next) => {
@@ -29,8 +29,7 @@ class GradeController {
         graderId: req.user.id
       });
 
-      await this.fileSystem.promises.access(file.filePath);
-      const stream = this.fileSystem.createReadStream(file.filePath);
+      const stream = this.storage.openReadStream(file.filePath);
       stream.once('error', (error) => {
         if (res.headersSent) {
           logger.error('Lỗi stream tệp bài nộp sau khi gửi header.', error);

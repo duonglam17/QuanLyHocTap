@@ -5,8 +5,9 @@ const request = require('supertest');
 const test = require('node:test');
 
 const config = require('../../src/common/config');
+const db = require('../../src/common/db');
 const errorHandler = require('../../src/common/errorHandler');
-const { ForbiddenError } = require('../../src/common/errors');
+const { ConflictError, ForbiddenError } = require('../../src/common/errors');
 const { createCourseAccessFake } = require('../../src/contracts/fakes');
 const { createSubmissionRouter } = require('../../src/modules/m2-assessment/routes/submissionRoutes');
 const SubmissionRepository = require('../../src/modules/m2-assessment/repositories/submissionRepository');
@@ -22,14 +23,14 @@ function createCourseAccess({
   courseStatus = 'PUBLISHED'
 } = {}) {
   return {
-    ...createCourseAccessFake(),
-    async validateEnrollment(courseId, studentId) {
-      return {
-        courseId,
-        studentId,
-        enrolled,
-        courseStatus
-      };
+    ...createCourseAccessFake({
+      courses: [{ id: 9, ownerId: 3, title: 'Course', status: courseStatus }],
+      enrolledStudentIds: enrolled ? [5] : []
+    }),
+    async getCourse(courseId) {
+      return courseId === 9
+        ? { id: 9, ownerId: 3, title: 'Course', status: courseStatus }
+        : null;
     }
   };
 }
@@ -56,7 +57,7 @@ function createFixture({
     studentId: 5,
     originalFilename: 'report.pdf',
     fileUuid: 'uuid-1',
-    filePath: 'uploads/submissions/uuid-1.pdf',
+    filePath: '00000000-0000-4000-8000-000000000001.pdf',
     fileSizeBytes: upload.buffer.length,
     mimeType: 'application/pdf',
     submittedAt: new Date('2026-10-21T11:00:00.000Z'),
@@ -105,26 +106,24 @@ function createFixture({
   };
   let fileNumber = 0;
   const storageClient = {
-    async saveFile(options) {
-      assert.equal(options.originalName, upload.originalname);
-      assert.equal(options.subdirectory, 'submissions');
+    async saveUpload(file, options) {
+      assert.equal(file.originalname, upload.originalname);
+      assert.deepEqual(options.allowedExt, ['.pdf', '.docx', '.pptx', '.zip', '.rar']);
+      assert.equal(options.maxBytes, 20 * 1024 * 1024);
       fileNumber += 1;
-      const file = {
-        fileUuid: `uuid-${fileNumber}`,
-        filePath: `uploads/submissions/uuid-${fileNumber}.pdf`,
-        fileSizeBytes: options.buffer.length,
-        mimeType: 'application/pdf',
-        originalFilename: options.originalName
+      const storedFile = {
+        storedName: `00000000-0000-4000-8000-00000000000${fileNumber}.pdf`,
+        originalName: file.originalname,
+        size: file.buffer.length,
+        mime: 'application/pdf'
       };
-      storedFiles.push(file);
+      storedFiles.push(storedFile);
       events.push('save-file');
-      return file;
-    }
-  };
-  const fileSystem = {
-    async rm(filePath) {
-      removedFiles.push(filePath);
-      events.push(`remove:${filePath}`);
+      return storedFile;
+    },
+    async deleteFile(storedName) {
+      removedFiles.push(storedName);
+      events.push(`remove:${storedName}`);
     }
   };
   const courseAccess = createCourseAccess({ enrolled, courseStatus });
@@ -133,7 +132,6 @@ function createFixture({
     storageClient,
     transactionRunner,
     clock: { now: () => new Date('2026-10-21T11:00:00.000Z') },
-    fileSystem,
     getPortFn(name, options) {
       assert.equal(name, 'courseAccess');
       assert.equal(options.optional, true);
@@ -277,7 +275,7 @@ test('US-08 rejects students who are not enrolled or whose course is archived', 
   const archived = createFixture({ courseStatus: 'ARCHIVED' });
   await assert.rejects(
     archived.service.submitAssignment({ assignmentId: 4, studentId: 5, upload }),
-    ForbiddenError
+    ConflictError
   );
   assert.deepEqual(archived.events, ['begin', 'find-assignment', 'rollback']);
 });
@@ -319,9 +317,9 @@ test('US-08 removes the newly saved orphan file when the database transaction fa
     'save-file',
     'upsert',
     'rollback',
-    'remove:uploads/submissions/uuid-1.pdf'
+    'remove:00000000-0000-4000-8000-000000000001.pdf'
   ]);
-  assert.deepEqual(removedFiles, ['uploads/submissions/uuid-1.pdf']);
+  assert.deepEqual(removedFiles, ['00000000-0000-4000-8000-000000000001.pdf']);
 });
 
 test('US-08 uses a parameterized unique-key upsert for double-submit protection', async () => {
@@ -383,7 +381,7 @@ test('US-08 uses a parameterized unique-key upsert for double-submit protection'
   assert.equal(queries[0].params[1], 5);
 });
 
-test('US-08 applies a 10 requests per minute limit to authenticated uploads', async () => {
+test('US-08 applies a 10 requests per minute limit to authenticated uploads', async (t) => {
   let handledUploads = 0;
   const submissionController = {
     async submitAssignment(req, res) {
@@ -392,16 +390,21 @@ test('US-08 applies a 10 requests per minute limit to authenticated uploads', as
     }
   };
   const app = express();
-  app.use('/api/m2-assessment', createSubmissionRouter({ submissionController }));
+  app.use('/api', createSubmissionRouter({ submissionController }));
   app.use(errorHandler);
-  const token = jwt.sign({ id: 5, role: 'SINH_VIEN' }, config.JWT_SECRET, {
+  const originalQuery = db.query;
+  db.query = async () => [[{ status: 'ACTIVE', token_version: 0 }], []];
+  t.after(() => {
+    db.query = originalQuery;
+  });
+  const token = jwt.sign({ id: 5, role: 'SINH_VIEN', token_version: 0 }, config.JWT_SECRET, {
     expiresIn: '5m'
   });
   const responses = [];
 
   for (let index = 0; index < 11; index += 1) {
     const response = await request(app)
-      .post('/api/m2-assessment/assignments/4/submissions')
+      .post('/api/assignments/4/submissions')
       .set('Authorization', `Bearer ${token}`)
       .attach('file', Buffer.from('test'), 'report.pdf');
     responses.push(response.status);

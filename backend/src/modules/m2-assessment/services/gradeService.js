@@ -22,24 +22,22 @@ class GradeService {
   }
 
   async _assertCourseOwner(courseId, graderId) {
+    const numericCourseId = Number(courseId);
     const courseAccess = this.getPort('courseAccess', { optional: true });
-    if (!courseAccess) {
+    if (
+      !courseAccess ||
+      typeof courseAccess.getCourse !== 'function' ||
+      typeof courseAccess.isOwner !== 'function'
+    ) {
       logger.warn('Port "courseAccess" chưa sẵn sàng để xác minh quyền chấm bài.');
       throw new ForbiddenError('Không thể xác minh quyền sở hữu khóa học.');
     }
 
-    let isOwner;
-    if (typeof courseAccess.isOwner === 'function') {
-      isOwner = await courseAccess.isOwner(courseId, graderId);
-    } else if (typeof courseAccess.validateCourseOwner === 'function') {
-      const result = await courseAccess.validateCourseOwner(courseId, graderId);
-      isOwner = result === true || result?.isOwner === true;
-    } else {
-      logger.warn('Port "courseAccess" không hỗ trợ xác minh chủ khóa học.');
-      throw new ForbiddenError('Không thể xác minh quyền sở hữu khóa học.');
+    const course = await courseAccess.getCourse(numericCourseId);
+    if (!course) {
+      throw new NotFoundError('Không tìm thấy khóa học yêu cầu.');
     }
-
-    if (!isOwner) {
+    if (!(await courseAccess.isOwner(Number(graderId), numericCourseId))) {
       throw new ForbiddenError('Chỉ chủ khóa học mới có quyền truy cập bài nộp và chấm điểm.');
     }
   }
@@ -163,6 +161,12 @@ class GradeService {
         throw new NotFoundError('Không tìm thấy bài nộp yêu cầu.');
       }
       await this._assertCourseOwner(submission.course_id, graderId);
+      const courseAccess = this.getPort('courseAccess', { optional: true });
+      if (typeof courseAccess?.assertCourseWritable !== 'function') {
+        logger.warn('Port "courseAccess.assertCourseWritable" chưa sẵn sàng.');
+        throw new ForbiddenError('Không thể xác minh khóa học còn quyền ghi.');
+      }
+      await courseAccess.assertCourseWritable(Number(submission.course_id));
       grade = await this.gradeRepository.upsert(
         {
           submissionId,
@@ -181,12 +185,10 @@ class GradeService {
         await notifications.notifyUser(submission.student_id, {
           type: 'ASSIGNMENT_GRADED',
           title: 'Bài tập đã được chấm',
-          content: `Bài tập của bạn đã được chấm: ${numericScore}/10.`,
-          metadata: {
-            submissionId: Number(submissionId),
-            assignmentId: Number(submission.assignment_id),
-            score: numericScore
-          }
+          message: `Bài tập của bạn đã được chấm: ${numericScore}/10.`,
+          refType: 'SUBMISSION',
+          refId: Number(submissionId),
+          link: `/courses/${Number(submission.course_id)}/my-grades`
         });
       } catch (error) {
         logger.warn(

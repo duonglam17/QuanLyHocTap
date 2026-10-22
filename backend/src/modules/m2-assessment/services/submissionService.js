@@ -1,10 +1,22 @@
-const { ForbiddenError, NotFoundError, ValidationError } = require('../../../common/errors');
+const {
+  ForbiddenError,
+  NotFoundError,
+  ValidationError
+} = require('../../../common/errors');
 const logger = require('../../../common/logger');
 const storage = require('../../../common/storage');
 const withTransaction = require('../../../common/withTransaction');
 const { getPort } = require('../../../contracts');
 
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.pptx', '.zip', '.rar'];
+const ALLOWED_MIME_TYPES = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/zip',
+  'application/vnd.rar'
+];
 
 class SubmissionService {
   constructor({
@@ -12,63 +24,55 @@ class SubmissionService {
     storageClient = storage,
     transactionRunner = withTransaction,
     clock = null,
-    fileSystem = null,
     getPortFn = getPort
   } = {}) {
     this.submissionRepository = submissionRepository;
     this.storage = storageClient;
     this.withTransaction = transactionRunner;
     this.clock = clock || { now: () => new Date() };
-    this.fileSystem = fileSystem || require('fs').promises;
     this.getPort = getPortFn;
   }
 
   async _assertEnrollment(courseId, studentId) {
+    const numericCourseId = Number(courseId);
     const courseAccessPort = this.getPort('courseAccess', { optional: true });
-    if (!courseAccessPort || typeof courseAccessPort.validateEnrollment !== 'function') {
+    if (
+      !courseAccessPort ||
+      typeof courseAccessPort.getCourse !== 'function' ||
+      typeof courseAccessPort.isEnrolled !== 'function' ||
+      typeof courseAccessPort.assertCourseWritable !== 'function'
+    ) {
       logger.warn('Port "courseAccess" chưa sẵn sàng để xác minh ghi danh.');
       throw new ForbiddenError('Không thể xác minh quyền ghi danh khóa học.');
     }
 
-    const enrollment = await courseAccessPort.validateEnrollment(courseId, studentId);
-    if (enrollment !== true && enrollment?.enrolled !== true) {
+    const course = await courseAccessPort.getCourse(numericCourseId);
+    if (!course) {
+      throw new NotFoundError('Không tìm thấy khóa học yêu cầu.');
+    }
+    if (!(await courseAccessPort.isEnrolled(Number(studentId), numericCourseId))) {
       throw new ForbiddenError('Sinh viên chưa ghi danh vào khóa học này (BR-05).');
     }
-
-    const courseStatus =
-      enrollment?.course?.status || enrollment?.courseStatus || enrollment?.status;
-    if (
-      courseStatus === 'ARCHIVED' ||
-      enrollment?.course?.deleted_at ||
-      enrollment?.course?.deletedAt
-    ) {
-      throw new ForbiddenError('Không thể nộp bài cho khóa học đã lưu trữ.');
-    }
-
-    if (typeof courseAccessPort.assertCourseWritable === 'function') {
-      await courseAccessPort.assertCourseWritable(courseId);
-    } else if (typeof courseAccessPort.isCourseWritable === 'function') {
-      if (!(await courseAccessPort.isCourseWritable(courseId))) {
-        throw new ForbiddenError('Không thể nộp bài cho khóa học đã lưu trữ hoặc chỉ đọc.');
-      }
-    } else if (typeof courseAccessPort.getCourse === 'function') {
-      const course = await courseAccessPort.getCourse(courseId);
-      if (!course || course.status === 'ARCHIVED' || course.deleted_at || course.deletedAt) {
-        throw new ForbiddenError('Không thể nộp bài cho khóa học đã lưu trữ.');
-      }
-    }
+    await courseAccessPort.assertCourseWritable(numericCourseId);
   }
 
-  async _removeFile(filePath, reason) {
+  async _removeFile(storedName, reason) {
     try {
-      await this.fileSystem.rm(filePath, { force: true });
+      await this.storage.deleteFile(storedName);
     } catch (error) {
       logger.error(`Không thể dọn tệp bài nộp ${reason}.`, error);
     }
   }
 
   async submitAssignment({ assignmentId, studentId, upload }) {
-    if (!assignmentId || !studentId) {
+    const numericAssignmentId = Number(assignmentId);
+    const numericStudentId = Number(studentId);
+    if (
+      !Number.isSafeInteger(numericAssignmentId) ||
+      numericAssignmentId <= 0 ||
+      !Number.isSafeInteger(numericStudentId) ||
+      numericStudentId <= 0
+    ) {
       throw new ValidationError('Mã bài tập và mã sinh viên là bắt buộc.');
     }
     if (!upload || !Buffer.isBuffer(upload.buffer) || upload.buffer.length === 0) {
@@ -88,7 +92,7 @@ class SubmissionService {
     try {
       const submission = await this.withTransaction(async (connection) => {
         const assignment = await this.submissionRepository.findAssignmentForUpdate(
-          assignmentId,
+          numericAssignmentId,
           connection
         );
         if (!assignment) {
@@ -97,18 +101,18 @@ class SubmissionService {
         if (assignment.status !== 'OPEN') {
           throw new ForbiddenError('Bài tập hiện không nhận bài nộp.');
         }
-        await this._assertEnrollment(assignment.course_id, studentId);
+        await this._assertEnrollment(assignment.course_id, numericStudentId);
 
         const existing = await this.submissionRepository.findByAssignmentAndStudentForUpdate(
-          assignmentId,
-          studentId,
+          numericAssignmentId,
+          numericStudentId,
           connection
         );
         previousFilePath = existing?.filePath || existing?.file_path || null;
 
         const deadline = new Date(assignment.deadline);
         if (Number.isNaN(deadline.getTime())) {
-          throw new Error(`Bài tập ${assignmentId} có hạn nộp không hợp lệ.`);
+          throw new Error(`Bài tập ${numericAssignmentId} có hạn nộp không hợp lệ.`);
         }
 
         const isLate = now.getTime() > deadline.getTime();
@@ -117,19 +121,26 @@ class SubmissionService {
           throw new ForbiddenError('Đã quá hạn nộp bài và bài tập không cho phép nộp trễ (BR-07).');
         }
 
-        savedFile = await this.storage.saveFile({
-          buffer: upload.buffer,
-          originalName: upload.originalname,
-          subdirectory: 'submissions'
+        const storedFile = await this.storage.saveUpload(upload, {
+          allowedExt: ALLOWED_EXTENSIONS,
+          allowedMime: ALLOWED_MIME_TYPES,
+          maxBytes: MAX_UPLOAD_BYTES
         });
+        savedFile = {
+          originalFilename: storedFile.originalName,
+          fileUuid: storedFile.storedName.slice(0, storedFile.storedName.lastIndexOf('.')),
+          filePath: storedFile.storedName,
+          fileSizeBytes: storedFile.size,
+          mimeType: storedFile.mime
+        };
 
         const lateMinutes = isLate
           ? Math.ceil((now.getTime() - deadline.getTime()) / 60_000)
           : 0;
         return this.submissionRepository.upsert(
           {
-            assignmentId,
-            studentId,
+            assignmentId: numericAssignmentId,
+            studentId: numericStudentId,
             file: savedFile,
             submittedAt: now,
             isLate,

@@ -6,12 +6,12 @@ function createClassGradebookRouter({ controller }) {
   const gradersOnly = [requireAuth, requireRole(['GIANG_VIEN', 'ADMIN'])];
 
   router.get(
-    '/courses/:courseId/gradebook',
+    '/courses/:courseId/grades',
     ...gradersOnly,
     controller.getCourseGradebook
   );
   router.get(
-    '/courses/:courseId/gradebook/export.csv',
+    '/courses/:courseId/grades/export-csv',
     ...gradersOnly,
     controller.exportCourseGradebookCsv
   );

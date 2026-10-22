@@ -5,6 +5,7 @@ const request = require('supertest');
 const test = require('node:test');
 
 const config = require('../../src/common/config');
+const db = require('../../src/common/db');
 const errorHandler = require('../../src/common/errorHandler');
 const { ForbiddenError } = require('../../src/common/errors');
 const {
@@ -35,30 +36,61 @@ function createFixture({ owner = true, students } = {}) {
     { assignment_id: 101, student_id: 12, score: '9.00' }
   ];
   const quizScores = [
-    { quizId: 201, title: 'Quiz 1', studentId: 11, score: 7 },
-    { quizId: 201, title: 'Quiz 1', studentId: 12, score: null }
+    {
+      quizId: 201,
+      quizTitle: 'Quiz 1',
+      maxScore: 10,
+      studentId: 11,
+      score: 7,
+      attemptStatus: 'SUBMITTED',
+      submittedAt: '2026-10-21T11:00:00.000Z',
+      visibleToStudent: true
+    },
+    {
+      quizId: 201,
+      quizTitle: 'Quiz 1',
+      maxScore: 10,
+      studentId: 12,
+      score: null,
+      attemptStatus: null,
+      submittedAt: null,
+      visibleToStudent: true
+    }
   ];
   const courseAccess = {
-    ...createCourseAccessFake({ courseOwner: { isOwner: owner }, students: roster }),
-    async isOwner() {
+    ...createCourseAccessFake({
+      courses: [{ id: 8, ownerId: 3, title: 'Course', status: 'PUBLISHED' }],
+      enrolledStudentIds: roster.map((student) => student.id),
+      enrolledStudents: roster
+    }),
+    async isOwner(userId, courseId) {
+      assert.equal(userId, 3);
+      assert.equal(courseId, 8);
       return owner;
     },
+    async getEnrolledStudentIds(courseId) {
+      events.push(['roster-ids', courseId]);
+      return roster.map((student) => student.id);
+    },
     async listEnrolledStudents(courseId, options) {
-      events.push(['roster', courseId, options.page, options.pageSize]);
-      const start = (options.page - 1) * options.pageSize;
+      events.push(['roster', courseId, options.page, options.limit]);
+      const start = (options.page - 1) * options.limit;
       return {
-        students: roster.slice(start, start + options.pageSize),
+        items: roster.slice(start, start + options.limit),
         total: roster.length
       };
     }
   };
   let quizPortCalls = 0;
   const quizResults = {
-    ...createQuizResultsFake(quizScores),
-    async getQuizScoresForCourse(courseId) {
-      events.push(['quiz-scores', courseId]);
+    ...createQuizResultsFake({
+      courseScores: { 8: quizScores }
+    }),
+    async getQuizScoresForCourse(courseId, studentIds) {
+      events.push(['quiz-scores', courseId, studentIds]);
       quizPortCalls += 1;
-      return quizScores;
+      const requestedIds = new Set(studentIds);
+      return quizScores.filter((score) => requestedIds.has(score.studentId));
     }
   };
   const repository = {
@@ -111,6 +143,11 @@ test('US-14 returns a 20-student page with batched assignment and course quiz sc
     1
   );
   assert.equal(getQuizPortCalls(), 1);
+  assert.deepEqual(events.find((event) => event[0] === 'quiz-scores'), [
+    'quiz-scores',
+    8,
+    [11, 12]
+  ]);
   assert.deepEqual(
     events.find((event) => event[0] === 'assignment-scores'),
     ['assignment-scores', 8, [11, 12], [101, 102]]
@@ -160,7 +197,7 @@ test('US-14 escapes CSV formula prefixes and quotes cells', () => {
   assert.equal(escapeCsvCell(null), '""');
 });
 
-test('US-14 streams CSV with UTF-8 BOM, formula escaping, and the full roster', async () => {
+test('US-14 streams CSV with UTF-8 BOM, formula escaping, and the full roster', async (t) => {
   const roster = Array.from({ length: 23 }, (_, index) => ({
     id: index + 11,
     studentNumber: `SV${String(index + 1).padStart(3, '0')}`,
@@ -170,16 +207,21 @@ test('US-14 streams CSV with UTF-8 BOM, formula escaping, and the full roster', 
   roster[0].fullName = '@SUM(A1)';
   const { service, events, getQuizPortCalls } = createFixture({ students: roster });
   const app = express();
-  app.use('/api/m2-assessment', createClassGradebookRouter({
+  app.use('/api', createClassGradebookRouter({
     controller: new ClassGradebookController(service)
   }));
   app.use(errorHandler);
-  const token = jwt.sign({ user_id: 3, role: 'GIANG_VIEN' }, config.JWT_SECRET, {
+  const originalQuery = db.query;
+  db.query = async () => [[{ status: 'ACTIVE', token_version: 0 }], []];
+  t.after(() => {
+    db.query = originalQuery;
+  });
+  const token = jwt.sign({ user_id: 3, role: 'GIANG_VIEN', token_version: 0 }, config.JWT_SECRET, {
     expiresIn: '5m'
   });
 
   const response = await request(app)
-    .get('/api/m2-assessment/courses/8/gradebook/export.csv')
+    .get('/api/courses/8/grades/export-csv')
     .set('Authorization', `Bearer ${token}`);
   const csv = response.text || response.body.toString('utf8');
 
@@ -205,21 +247,22 @@ test('US-14 streams CSV with UTF-8 BOM, formula escaping, and the full roster', 
 
 test('US-14 contract fakes paginate enrolled students and expose course quiz scores', async () => {
   const courseAccess = createCourseAccessFake({
-    students: [
+    courses: [{ id: 10, ownerId: 3, title: 'Course', status: 'PUBLISHED' }],
+    enrolledStudentIds: [1, 2],
+    enrolledStudents: [
       { id: 1, fullName: 'One' },
       { id: 2, fullName: 'Two' }
     ]
   });
-  const quizResults = createQuizResultsFake([
-    { quizId: 5, studentId: 1, score: 8 }
-  ]);
-
-  assert.deepEqual(await courseAccess.listEnrolledStudents(10, { page: 2, pageSize: 1 }), {
-    students: [{ id: 2, fullName: 'Two' }],
-    total: 2,
-    courseId: 10
+  const quizResults = createQuizResultsFake({
+    courseScores: { 10: [{ quizId: 5, studentId: 1, score: 8 }] }
   });
-  assert.deepEqual(await quizResults.getQuizScoresForCourse(10), [
+
+  assert.deepEqual(await courseAccess.listEnrolledStudents(10, { page: 2, limit: 1 }), {
+    items: [{ id: 2, fullName: 'Two' }],
+    total: 2
+  });
+  assert.deepEqual(await quizResults.getQuizScoresForCourse(10, [1, 2]), [
     { quizId: 5, studentId: 1, score: 8 }
   ]);
 });

@@ -10,10 +10,9 @@ const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 
 function createSubmissionRouter({
   submissionController,
-  uploadLimiter = rateLimit({
+  uploadLimiter = rateLimit('m2-assessment-submissions', {
     windowMs: 60_000,
-    limit: 10,
-    message: 'Tối đa 10 lần nộp bài mỗi phút.'
+    max: 10
   })
 } = {}) {
   const router = express.Router();

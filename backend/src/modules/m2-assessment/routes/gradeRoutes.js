@@ -17,7 +17,11 @@ function createGradeRouter({ gradeController } = {}) {
     });
   const gradersOnly = [requireAuth, requireRole(['GIANG_VIEN', 'ADMIN'])];
 
-  router.get('/courses/:courseId/submissions', ...gradersOnly, controller.listCourseSubmissions);
+  router.get(
+    '/courses/:courseId/grades/submissions',
+    ...gradersOnly,
+    controller.listCourseSubmissions
+  );
   router.get('/submissions/:submissionId/download', ...gradersOnly, controller.downloadSubmission);
   router.post('/submissions/:submissionId/grade', ...gradersOnly, controller.gradeSubmission);
 
