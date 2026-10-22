@@ -57,6 +57,11 @@ Versions are recorded in `package.json`/`package-lock.json`. PR 1 verifies store
 
 See [`docs/contracts.md`](../docs/contracts.md) for the shared infrastructure and inter-module contract source of truth. The registry rejects duplicate registrations and throws for a missing required Port; `getPort(name, { optional: true })` returns `null`.
 
+### Usage Ports
+
+- `assessmentUsage` (provided by M2) and `quizUsage` (provided by M3) each expose `hasCourseData(courseId)` and `hasUserData(userId)`.
+- M1 should resolve both with `getPort(name, { optional: true })`; a missing Port must be treated as existing data, allowing only archive or soft-delete behavior.
+
 ## Configuration and storage notes
 
 `.env.example` contains local-only placeholder values, not deployable credentials. Production must supply its own `JWT_SECRET` and database credentials. MySQL pool sizing is restricted to the architecture's 10–30 connection range. Upload storage defaults to `backend/uploads`, is not exposed as a static route, uses UUID filenames, and validates both supported extensions and detected magic bytes. The storage helper removes any partial file if a write or rename fails.

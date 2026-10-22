@@ -50,6 +50,22 @@
  */
 
 /**
+ * M2 reports assignments or submissions for a course, and submissions,
+ * assigned assignments, or graded work associated with a user.
+ * @typedef {Object} AssessmentUsagePort
+ * @property {(courseId: number) => Promise<boolean>} hasCourseData
+ * @property {(userId: number) => Promise<boolean>} hasUserData
+ */
+
+/**
+ * M3 reports quizzes or attempts for a course, and attempts, quizzes,
+ * notifications, or comments associated with a user.
+ * @typedef {Object} QuizUsagePort
+ * @property {(courseId: number) => Promise<boolean>} hasCourseData
+ * @property {(userId: number) => Promise<boolean>} hasUserData
+ */
+
+/**
  * @typedef {'SUBMITTED'|'AUTO_SUBMITTED'|null} AttemptStatus
  */
 
