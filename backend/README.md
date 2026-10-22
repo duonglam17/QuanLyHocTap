@@ -75,3 +75,20 @@ PR 0 provides the shared scaffold. PR 1 implements M1 authentication; course and
 - `POST /api/auth/refresh` rotates a valid refresh token. `POST /api/auth/logout` increments `token_version` and removes all refresh tokens for the authenticated user.
 - Login is limited to five requests per minute per IP. Five consecutive wrong passwords in a ten-minute window temporarily lock the account for 15 minutes. Unknown users and incorrect passwords receive the same response.
 - Apply `database/migrations/202611011000_m1_add_login_failure_window.sql` after the M1 core migration to persist the start of the failed-login window.
+
+## M1 courses and enrollment (PR 2)
+
+- `POST /api/courses` creates an instructor-owned `DRAFT` course. A unique six-character uppercase alphanumeric enrollment key is generated unless the instructor supplies a case-sensitive 6-8 character key.
+- Instructors can list, view, update, and publish their courses. Students see courses they joined; enrollment keys are not returned in student course views. Owners and admins can archive a course.
+- `DELETE /api/courses/:courseId` never hard-deletes: empty courses are soft-deleted, while courses with M1 content/enrollments or assessment/quiz records are archived.
+- Students join using `POST /api/courses/enroll` with `enrollment_key`. The key comparison is case-sensitive; only published courses accept enrollments. The endpoint is limited to five attempts per IP per minute.
+- An instructor or admin can remove a student using `DELETE /api/courses/:courseId/enrollments/:studentId` only when both optional usage Ports confirm the student has no assessment or quiz records. Missing usage providers conservatively block removal.
+- M1 registers the real `courseAccess` Port during module `init(ctx)`; consumers resolve it through the app's contract registry while handling requests.
+
+## M1 admin user management (PR 3)
+
+- Admin-only routes under `/api/users` support paginated search/filter, account creation, role changes, status lock/unlock, and soft deletion.
+- Account creation generates a cryptographically random initial password and stores only its bcrypt hash (work factor 10). The password is returned once in the create response for secure handoff and `must_change_password` is set; the API never logs the password.
+- Locking, unlocking, changing a role, and soft deletion increment `token_version` and revoke refresh tokens in one transaction so existing access tokens cannot keep their old status or role.
+- A user cannot lock their own account. Deleted accounts are excluded from search and authentication; user rows are never hard-deleted.
+- The migration's `deleted_at`, `token_version`, `must_change_password`, role foreign key, and unique username/email columns already support this step; PR 3 adds no migration.

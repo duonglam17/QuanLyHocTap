@@ -16,14 +16,46 @@ function createQuizRepository(db) {
   }
 
   return {
-    async createQuizWithQuestions(connection, courseId, quiz, questions) {
+    async hasCourseData(courseId) {
+      const [rows] = await db.query(
+        `SELECT EXISTS (
+           SELECT 1 FROM quizzes WHERE course_id = ?
+           UNION ALL
+           SELECT 1
+           FROM attempts a
+           INNER JOIN quizzes q ON q.id = a.quiz_id
+           WHERE q.course_id = ?
+         ) AS hasData`,
+        [courseId, courseId]
+      );
+      return Boolean(rows[0].hasData);
+    },
+
+    async hasUserData(userId) {
+      const [rows] = await db.query(
+        `SELECT EXISTS (
+           SELECT 1 FROM attempts WHERE student_id = ?
+           UNION ALL
+           SELECT 1 FROM quizzes WHERE creator_id = ?
+           UNION ALL
+           SELECT 1 FROM notifications WHERE user_id = ?
+           UNION ALL
+           SELECT 1 FROM discussions WHERE author_id = ?
+         ) AS hasData`,
+        [userId, userId, userId, userId]
+      );
+      return Boolean(rows[0].hasData);
+    },
+
+    async createQuizWithQuestions(connection, courseId, creatorId, quiz, questions) {
       const [result] = await connection.query(
         `INSERT INTO quizzes
-          (course_id, title, description, duration_minutes, open_time, close_time,
+          (course_id, creator_id, title, description, duration_minutes, open_time, close_time,
            show_score_immediately, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'DRAFT')`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT')`,
         [
           courseId,
+          creatorId,
           quiz.title,
           quiz.description ?? null,
           quiz.duration_minutes,

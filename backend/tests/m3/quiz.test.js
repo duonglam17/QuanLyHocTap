@@ -8,6 +8,7 @@ const config = require('../../src/common/config');
 const db = require('../../src/common/db');
 const errorHandler = require('../../src/common/errorHandler');
 const sanitizeText = require('../../src/common/sanitizeText');
+const { createRegistry } = require('../../src/contracts');
 const { createCourseAccessFake } = require('../../src/contracts/fakes');
 const createQuizRepository = require('../../src/modules/m3-quiz/repositories/quizRepository');
 const createQuizRoutes = require('../../src/modules/m3-quiz/routes/quizRoutes');
@@ -41,8 +42,8 @@ function createService(overrides = {}) {
   const calls = [];
   const courseAccess = createCourseAccessFake();
   const repository = {
-    async createQuizWithQuestions(connection, courseId, quiz, questions) {
-      calls.push({ operation: 'create', connection, courseId, quiz, questions });
+    async createQuizWithQuestions(connection, courseId, creatorId, quiz, questions) {
+      calls.push({ operation: 'create', connection, courseId, creatorId, quiz, questions });
       return 55;
     },
     async loadQuiz(quizId) {
@@ -115,6 +116,7 @@ test('creates a draft quiz with sanitized questions in one transaction', async (
   assert.deepEqual(quiz, { id: 55, status: 'DRAFT', questions: [] });
   assert.equal(calls[0].operation, 'create');
   assert.equal(calls[0].connection.connection, true);
+  assert.equal(calls[0].creatorId, 2);
   assert.equal(calls[0].quiz.title, 'Midterm quiz');
   assert.equal(calls[0].questions[0].content.includes('<'), false);
   assert.equal(calls[0].questions[0].options[0].content, 'Correct');
@@ -124,8 +126,8 @@ test('inserts a quiz, its questions, and options through the same transaction co
   const queries = [];
   let insertId = 10;
   const connection = {
-    async query(sql) {
-      queries.push(sql);
+    async query(sql, values) {
+      queries.push({ sql, values });
       return [{ insertId: insertId++ }];
     }
   };
@@ -134,16 +136,67 @@ test('inserts a quiz, its questions, and options through the same transaction co
   const quizId = await repository.createQuizWithQuestions(
     connection,
     1,
+    2,
     makeQuizData(),
     makeQuizData().questions
   );
 
   assert.equal(quizId, 10);
   assert.equal(queries.length, 4);
-  assert.match(queries[0], /INSERT INTO quizzes/);
-  assert.match(queries[1], /INSERT INTO questions/);
-  assert.match(queries[2], /INSERT INTO options/);
-  assert.match(queries[3], /INSERT INTO options/);
+  assert.match(queries[0].sql, /INSERT INTO quizzes/);
+  assert.deepEqual(queries[0].values.slice(0, 3), [1, 2, 'Midterm quiz']);
+  assert.match(queries[1].sql, /INSERT INTO questions/);
+  assert.match(queries[2].sql, /INSERT INTO options/);
+  assert.match(queries[3].sql, /INSERT INTO options/);
+});
+
+test('init registers quizUsage with one EXISTS query for each data check', async () => {
+  const { init } = require('../../src/modules/m3-quiz');
+  const registry = createRegistry();
+  const queries = [];
+  const queryResults = [[{ hasData: 1 }], [{ hasData: 1 }]];
+  const db = {
+    async query(sql, values) {
+      queries.push({ sql, values });
+      return [queryResults.shift()];
+    }
+  };
+
+  init({
+    db,
+    logger: { error() {} },
+    common: { sanitizeText },
+    contracts: registry
+  });
+
+  const quizUsage = registry.getPort('quizUsage');
+  assert.equal(await quizUsage.hasCourseData(7), true);
+  assert.equal(await quizUsage.hasUserData(11), true);
+  assert.equal(queries.length, 2);
+  assert.match(queries[0].sql, /SELECT EXISTS/);
+  assert.match(queries[0].sql, /FROM quizzes WHERE course_id = \?/);
+  assert.match(queries[0].sql, /FROM attempts/);
+  assert.deepEqual(queries[0].values, [7, 7]);
+  assert.match(queries[1].sql, /SELECT EXISTS/);
+  assert.match(queries[1].sql, /creator_id = \?/);
+  assert.match(queries[1].sql, /FROM notifications WHERE user_id = \?/);
+  assert.match(queries[1].sql, /FROM discussions WHERE author_id = \?/);
+  assert.deepEqual(queries[1].values, [11, 11, 11, 11]);
+});
+
+test('quiz usage reports no user data when all M3 sources are empty', async () => {
+  let queryCount = 0;
+  const repository = createQuizRepository({
+    async query(sql, values) {
+      queryCount++;
+      assert.match(sql, /SELECT EXISTS/);
+      assert.deepEqual(values, [19, 19, 19, 19]);
+      return [[{ hasData: 0 }]];
+    }
+  });
+
+  assert.equal(await repository.hasUserData(19), false);
+  assert.equal(queryCount, 1);
 });
 
 test('rejects quiz creation when the caller is not the course owner', async () => {

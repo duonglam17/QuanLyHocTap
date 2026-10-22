@@ -51,6 +51,13 @@ function init(ctx) {
   );
 }
 
+function init(ctx) {
+  ctx.contracts.registerPort(
+    'assessmentUsage',
+    new AssessmentUsageRepository(ctx.db)
+  );
+}
+
 // Sau này các route nghiệp vụ sẽ được gắn tại đây:
 // router.use('/assignments', assignmentRoutes);
 // router.use('/submissions', submissionRoutes);
