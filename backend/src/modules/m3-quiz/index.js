@@ -17,11 +17,14 @@ const createQuizRoutes = require('./routes/quizRoutes');
 const createAttemptRepository = require('./repositories/attemptRepository');
 const { createAttemptService } = require('./services/attemptService');
 const createAttemptRoutes = require('./routes/attemptRoutes');
+const createQuizResultsRepository = require('./repositories/quizResultsRepository');
+const cron = require('node-cron');
 
 const router = Router();
 let notificationService;
 let quizService;
 let attemptService;
+let autoSubmitTask;
 
 const notificationsPort = {
   notifyUser(...args) {
@@ -71,6 +74,9 @@ router.use(createAttemptRoutes({
   },
   saveAnswer(...args) {
     return attemptService.saveAnswer(...args);
+  },
+  submitAttempt(...args) {
+    return attemptService.submitAttempt(...args);
   }
 }));
 
@@ -106,7 +112,30 @@ function init(ctx) {
     repository: attemptRepository,
     getCourseAccess: () => ctx.contracts.getPort('courseAccess', { optional: true }),
     withTransaction: ctx.common.withTransaction,
-    clock: ctx.common.clock
+    clock: ctx.common.clock,
+    logger: ctx.logger
+  });
+
+  if (autoSubmitTask) {
+    autoSubmitTask.stop();
+  }
+  const scheduler = ctx.cron || cron;
+  autoSubmitTask = scheduler.schedule('* * * * *', async () => {
+    try {
+      await attemptService.autoSubmitExpiredAttempts();
+    } catch (error) {
+      ctx.logger.error('Không thể quét các lượt thi hết hạn.', error);
+    }
+  });
+
+  const quizResultsRepository = createQuizResultsRepository(ctx.db, ctx.common.clock);
+  ctx.contracts.registerPort('quizResults', {
+    getQuizScoresForCourse(...args) {
+      return quizResultsRepository.getQuizScoresForCourse(...args);
+    },
+    getQuizScoresForStudent(...args) {
+      return quizResultsRepository.getQuizScoresForStudent(...args);
+    }
   });
 }
 

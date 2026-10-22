@@ -33,6 +33,7 @@ function createAttemptService({
   getCourseAccess,
   withTransaction,
   clock,
+  logger,
   createSessionToken = () => crypto.randomBytes(32).toString('hex')
 }) {
   function remainingSeconds(expiresAt) {
@@ -80,6 +81,103 @@ function createAttemptService({
     }
   }
 
+  function isScoreVisible(attempt, now) {
+    return (
+      Boolean(attempt.showScoreImmediately) ||
+      attempt.quizStatus === 'CLOSED' ||
+      parseServerDateTime(attempt.quizCloseTime).getTime() <= now.getTime()
+    );
+  }
+
+  function buildSubmissionResult(attempt, now) {
+    const visibleToStudent = isScoreVisible(attempt, now);
+    return {
+      attemptId: attempt.id,
+      status: attempt.status,
+      submittedAt: attempt.submittedAt,
+      score: visibleToStudent && attempt.score !== null ? Number(attempt.score) : null,
+      visibleToStudent
+    };
+  }
+
+  async function completeAttempt(connection, attempt, status, submittedAt) {
+    const grade = await repository.gradeAttempt(
+      connection,
+      attempt.quizId,
+      attempt.id
+    );
+    const updated = await repository.completeAttempt(
+      connection,
+      attempt.id,
+      {
+        ...grade,
+        status,
+        submittedAt,
+        score: grade.score
+      }
+    );
+    if (!updated) {
+      throw new InternalServerError('Không thể cập nhật kết quả lượt thi.');
+    }
+    await repository.markQuizHasAttempts(connection, attempt.quizId);
+    return {
+      ...attempt,
+      ...grade,
+      status,
+      submittedAt,
+      score: grade.score
+    };
+  }
+
+  async function finalizeAttempt(attemptId, studentId, session, forceAutoSubmit = false) {
+    return withTransaction(async (connection) => {
+      const attempt = await repository.findAttemptForUpdate(connection, attemptId);
+      if (!attempt) {
+        throw new NotFoundError('Không tìm thấy lượt thi.');
+      }
+      if (studentId != null && String(attempt.studentId) !== String(studentId)) {
+        throw new ForbiddenError('Lượt thi không thuộc về sinh viên hiện tại.');
+      }
+      if (session) {
+        assertSession(attempt, session.clientInstanceId, session.sessionToken);
+      }
+
+      const now = clock.now();
+      if (attempt.status !== 'IN_PROGRESS') {
+        return buildSubmissionResult(attempt, now);
+      }
+
+      const expired = isExpired(attempt, now);
+      if (forceAutoSubmit && !expired) {
+        return null;
+      }
+      const resultAttempt = await completeAttempt(
+        connection,
+        attempt,
+        expired ? 'AUTO_SUBMITTED' : 'SUBMITTED',
+        now
+      );
+      return buildSubmissionResult(resultAttempt, now);
+    });
+  }
+
+  async function autoSubmitExpiredAttempts() {
+    const now = clock.now();
+    const attemptIds = await repository.listExpiredAttemptIds(now);
+    let processed = 0;
+    for (const attemptId of attemptIds) {
+      try {
+        const result = await finalizeAttempt(attemptId, null, null, true);
+        if (result) {
+          processed++;
+        }
+      } catch (error) {
+        logger.error(`Không thể tự thu lượt thi ${attemptId}.`, error);
+      }
+    }
+    return { processed, found: attemptIds.length };
+  }
+
   async function buildAttemptResponse(attempt) {
     const [questions, savedAnswers] = await Promise.all([
       repository.listQuestions(attempt.quizId),
@@ -99,7 +197,13 @@ function createAttemptService({
 
   async function handleExistingAttempt(attempt, input) {
     const now = clock.now();
-    assertAttemptInProgress(attempt, now);
+    if (attempt.status !== 'IN_PROGRESS') {
+      assertAttemptInProgress(attempt, now);
+    }
+    if (isExpired(attempt, now)) {
+      await finalizeAttempt(attempt.id, null, null, true);
+      throw new ConflictError('Lượt thi đã hết thời gian.', null, 'ATTEMPT_EXPIRED');
+    }
 
     if (attempt.clientInstanceId === input.clientInstanceId) {
       return buildAttemptResponse(attempt);
@@ -238,7 +342,7 @@ function createAttemptService({
         throw new ValidationError('Thông tin câu trả lời hoặc phiên làm bài không hợp lệ.');
       }
 
-      return withTransaction(async (connection) => {
+      const result = await withTransaction(async (connection) => {
         const attempt = await repository.findAttemptForUpdate(connection, attemptId);
         if (!attempt) {
           throw new NotFoundError('Không tìm thấy lượt thi.');
@@ -247,8 +351,20 @@ function createAttemptService({
           throw new ForbiddenError('Lượt thi không thuộc về sinh viên hiện tại.');
         }
         const now = clock.now();
-        assertAttemptInProgress(attempt, now);
         assertSession(attempt, input.clientInstanceId, input.sessionToken);
+        if (attempt.status !== 'IN_PROGRESS') {
+          assertAttemptInProgress(attempt, now);
+        }
+        if (isExpired(attempt, now)) {
+          const resultAttempt = await completeAttempt(
+            connection,
+            attempt,
+            'AUTO_SUBMITTED',
+            now
+          );
+          return { expired: true, result: buildSubmissionResult(resultAttempt, now) };
+        }
+        assertAttemptInProgress(attempt, now);
         const validOption = await repository.optionBelongsToQuestion(
           connection,
           attempt.quizId,
@@ -265,11 +381,32 @@ function createAttemptService({
           input.optionId
         );
         return {
-          saved: true,
-          remaining_seconds: remainingSeconds(attempt.expiresAt)
+          expired: false,
+          response: {
+            saved: true,
+            remaining_seconds: remainingSeconds(attempt.expiresAt)
+          }
         };
       });
-    }
+      if (result.expired) {
+        throw new ConflictError('Lượt thi đã hết thời gian.', null, 'ATTEMPT_EXPIRED');
+      }
+      return result.response;
+    },
+
+    submitAttempt(attemptId, studentId, input) {
+      if (
+        !input ||
+        typeof input.clientInstanceId !== 'string' ||
+        typeof input.sessionToken !== 'string' ||
+        !input.sessionToken
+      ) {
+        throw new ValidationError('Thông tin phiên làm bài không hợp lệ.');
+      }
+      return finalizeAttempt(attemptId, studentId, input);
+    },
+
+    autoSubmitExpiredAttempts
   };
 }
 

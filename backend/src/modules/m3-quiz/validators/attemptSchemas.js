@@ -21,4 +21,12 @@ const saveAnswerSchema = z.object({
   })
 });
 
-module.exports = { startAttemptSchema, saveAnswerSchema };
+const submitAttemptSchema = z.object({
+  params: z.object({ attemptId: idSchema }),
+  body: z.object({
+    clientInstanceId: clientInstanceIdSchema,
+    sessionToken: z.string().min(1).max(64)
+  })
+});
+
+module.exports = { startAttemptSchema, saveAnswerSchema, submitAttemptSchema };

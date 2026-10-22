@@ -364,6 +364,57 @@ paths:
                     details: null
         '422':
           description: Question, option, or session input is invalid
+  /api/attempts/{attemptId}/submit:
+    post:
+      tags:
+        - M3 Quiz
+      summary: Submit and automatically grade the authenticated student's attempt
+      operationId: submitQuizAttempt
+      security:
+        - bearerAuth: []
+      x-user-story: US-12
+      x-allowed-roles:
+        - SINH_VIEN
+      parameters:
+        - name: attemptId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[1-9]\d*$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitAttemptRequest'
+      responses:
+        '200':
+          description: Attempt submitted or prior submission result returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttemptSubmissionResult'
+        '401':
+          description: Authentication is required
+        '403':
+          description: Attempt does not belong to the authenticated student
+        '404':
+          description: Attempt does not exist
+        '409':
+          description: Session has been replaced
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttemptConflict'
+              examples:
+                sessionReplaced:
+                  value:
+                    code: SESSION_REPLACED
+                    message: Phiên làm bài này đã được thay thế.
+                    details: null
+        '422':
+          description: Session input is invalid
 components:
   securitySchemes:
     bearerAuth:
@@ -700,6 +751,46 @@ components:
         remaining_seconds:
           type: integer
           minimum: 0
+    SubmitAttemptRequest:
+      type: object
+      required:
+        - clientInstanceId
+        - sessionToken
+      properties:
+        clientInstanceId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        sessionToken:
+          type: string
+          minLength: 1
+          maxLength: 64
+    AttemptSubmissionResult:
+      type: object
+      required:
+        - attemptId
+        - status
+        - submittedAt
+        - score
+        - visibleToStudent
+      properties:
+        attemptId:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum:
+            - SUBMITTED
+            - AUTO_SUBMITTED
+        submittedAt:
+          type: string
+          format: date-time
+        score:
+          type: number
+          nullable: true
+          description: Null while the quiz score is hidden from the student.
+        visibleToStudent:
+          type: boolean
     AttemptConflict:
       type: object
       required:

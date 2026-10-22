@@ -8,8 +8,12 @@ const config = require('../../src/common/config');
 const db = require('../../src/common/db');
 const { ConflictError } = require('../../src/common/errors');
 const errorHandler = require('../../src/common/errorHandler');
+const sanitizeText = require('../../src/common/sanitizeText');
+const { createRegistry } = require('../../src/contracts');
 const createAttemptRepository = require('../../src/modules/m3-quiz/repositories/attemptRepository');
+const createQuizResultsRepository = require('../../src/modules/m3-quiz/repositories/quizResultsRepository');
 const createAttemptRoutes = require('../../src/modules/m3-quiz/routes/attemptRoutes');
+const { createQuizResultsFake } = require('../../src/contracts/fakes');
 const {
   createAttemptService,
   MAX_SESSION_TAKEOVERS
@@ -33,6 +37,12 @@ function createAttempt(overrides = {}) {
     expiresAt,
     status: 'IN_PROGRESS',
     takeoverCount: 0,
+    quizTitle: 'Quiz',
+    showScoreImmediately: true,
+    quizCloseTime: new Date('2026-11-25T02:00:00.000Z'),
+    quizStatus: 'PUBLISHED',
+    score: null,
+    submittedAt: null,
     ...overrides
   };
 }
@@ -44,6 +54,13 @@ function createService({ initialAttempt = null, clockNow = now } = {}) {
   let nowValue = clockNow;
   const takeoverUpdates = [];
   const saved = [];
+  const logger = {
+    errors: [],
+    error(message, error) {
+      this.errors.push({ message, error });
+    }
+  };
+  let gradingCount = 0;
   const quiz = {
     id: 5,
     courseId: 8,
@@ -119,6 +136,23 @@ function createService({ initialAttempt = null, clockNow = now } = {}) {
     async upsertAnswer(_connection, attemptId, questionId, optionId) {
       saved.push({ attemptId, questionId, optionId });
       savedAnswers = [{ questionId, optionId }];
+    },
+    async gradeAttempt() {
+      gradingCount++;
+      return { totalQuestions: 4, correctAnswersCount: 3, score: 7.5 };
+    },
+    async completeAttempt(_connection, attemptId, result) {
+      if (!attempt || attempt.id !== attemptId || attempt.status !== 'IN_PROGRESS') {
+        return false;
+      }
+      attempt = { ...attempt, ...result };
+      return true;
+    },
+    async markQuizHasAttempts() {},
+    async listExpiredAttemptIds() {
+      return attempt?.status === 'IN_PROGRESS' && attempt.expiresAt <= nowValue
+        ? [attempt.id]
+        : [];
     }
   };
   const courseAccess = {
@@ -135,6 +169,7 @@ function createService({ initialAttempt = null, clockNow = now } = {}) {
     getCourseAccess: () => courseAccess,
     withTransaction: async (work) => work({}),
     clock: { now: () => new Date(nowValue) },
+    logger,
     createSessionToken: () => `generated-session-${++tokenNumber}`
   });
 
@@ -143,6 +178,8 @@ function createService({ initialAttempt = null, clockNow = now } = {}) {
     repository,
     takeoverUpdates,
     saved,
+    logger,
+    getGradingCount: () => gradingCount,
     getAttempt: () => attempt,
     setNow(value) {
       nowValue = value;
@@ -220,6 +257,13 @@ test('explicit takeover replaces the session and rejects saves from the old sess
       sessionToken: 'session-one',
       questionId: 9,
       optionId: 92
+    }),
+    (error) => error.code === 'SESSION_REPLACED' && error.statusCode === 409
+  );
+  await assert.rejects(
+    service.submitAttempt(71, 12, {
+      clientInstanceId: 'tab-one',
+      sessionToken: 'session-one'
     }),
     (error) => error.code === 'SESSION_REPLACED' && error.statusCode === 409
   );
@@ -324,6 +368,307 @@ test('repository reports a lost conditional takeover when no row was updated', a
   assert.equal(updated, false);
 });
 
+test('repository grades all questions with one grouped query and normalizes score to ten', async () => {
+  let query;
+  const repository = createAttemptRepository({});
+  const result = await repository.gradeAttempt(
+    {
+      async query(sql, values) {
+        query = { sql, values };
+        return [[{ totalQuestions: 3, correctAnswersCount: 1 }]];
+      }
+    },
+    5,
+    71
+  );
+
+  assert.match(query.sql, /COUNT\(DISTINCT q\.id\)/);
+  assert.match(query.sql, /LEFT JOIN attempt_answers/);
+  assert.match(query.sql, /LEFT JOIN options/);
+  assert.deepEqual(query.values, [71, 5]);
+  assert.deepEqual(result, {
+    totalQuestions: 3,
+    correctAnswersCount: 1,
+    score: 3.33
+  });
+});
+
+test('manual submit grades once and repeated submit returns the stored result', async () => {
+  const { service, getAttempt, getGradingCount } = createService({
+    initialAttempt: createAttempt()
+  });
+  const input = { clientInstanceId: 'tab-one', sessionToken: 'session-one' };
+
+  const first = await service.submitAttempt(71, 12, input);
+  const repeated = await service.submitAttempt(71, 12, input);
+
+  assert.deepEqual(first, {
+    attemptId: 71,
+    status: 'SUBMITTED',
+    submittedAt: now,
+    score: 7.5,
+    visibleToStudent: true
+  });
+  assert.deepEqual(repeated, first);
+  assert.equal(getAttempt().totalQuestions, 4);
+  assert.equal(getAttempt().correctAnswersCount, 3);
+  assert.equal(getGradingCount(), 1);
+});
+
+test('manual submit after expiry is auto-submitted and score visibility follows quiz settings', async () => {
+  const { service, getAttempt } = createService({
+    initialAttempt: createAttempt({
+      showScoreImmediately: false,
+      quizCloseTime: new Date('2026-11-25T02:00:00.000Z')
+    }),
+    clockNow: new Date(expiresAt.getTime() + 1000)
+  });
+
+  const result = await service.submitAttempt(71, 12, {
+    clientInstanceId: 'tab-one',
+    sessionToken: 'session-one'
+  });
+
+  assert.equal(result.status, 'AUTO_SUBMITTED');
+  assert.equal(result.score, null);
+  assert.equal(result.visibleToStudent, false);
+  assert.equal(getAttempt().score, 7.5);
+});
+
+test('expired save-answer lazily auto-submits before returning a conflict', async () => {
+  const { service, getAttempt, getGradingCount } = createService({
+    initialAttempt: createAttempt(),
+    clockNow: new Date(expiresAt.getTime() + 1000)
+  });
+
+  await assert.rejects(
+    service.saveAnswer(71, 12, {
+      clientInstanceId: 'tab-one',
+      sessionToken: 'session-one',
+      questionId: 9,
+      optionId: 92
+    }),
+    (error) => error.code === 'ATTEMPT_EXPIRED' && error.statusCode === 409
+  );
+  assert.equal(getAttempt().status, 'AUTO_SUBMITTED');
+  assert.equal(getGradingCount(), 1);
+});
+
+test('an expired save from a replaced session is rejected without using that request to finalize', async () => {
+  const { service, getAttempt, getGradingCount } = createService({
+    initialAttempt: createAttempt({
+      clientInstanceId: 'tab-two',
+      sessionToken: 'session-two',
+      expiresAt: new Date(now.getTime() - 1000)
+    })
+  });
+
+  await assert.rejects(
+    service.saveAnswer(71, 12, {
+      clientInstanceId: 'tab-one',
+      sessionToken: 'session-one',
+      questionId: 9,
+      optionId: 92
+    }),
+    (error) => error.code === 'SESSION_REPLACED' && error.statusCode === 409
+  );
+  assert.equal(getAttempt().status, 'IN_PROGRESS');
+  assert.equal(getGradingCount(), 0);
+});
+
+test('a save after prior submission does not attempt to grade the expired attempt again', async () => {
+  const { service, getGradingCount } = createService({
+    initialAttempt: createAttempt({
+      status: 'SUBMITTED',
+      score: 7.5,
+      expiresAt: new Date(now.getTime() - 1000)
+    }),
+    clockNow: now
+  });
+
+  await assert.rejects(
+    service.saveAnswer(71, 12, {
+      clientInstanceId: 'tab-one',
+      sessionToken: 'session-one',
+      questionId: 9,
+      optionId: 92
+    }),
+    (error) =>
+      error.code === 'ATTEMPT_ALREADY_SUBMITTED' && error.statusCode === 409
+  );
+  assert.equal(getGradingCount(), 0);
+});
+
+test('expired attempts are auto-submitted by the server sweep', async () => {
+  const { service, getAttempt, logger } = createService({
+    initialAttempt: createAttempt({ expiresAt: new Date(now.getTime() - 1) })
+  });
+
+  const result = await service.autoSubmitExpiredAttempts();
+
+  assert.deepEqual(result, { processed: 1, found: 1 });
+  assert.equal(getAttempt().status, 'AUTO_SUBMITTED');
+  assert.equal(logger.errors.length, 0);
+});
+
+test('quizResults repository uses one parameterized query for all students and returns contract shape', async () => {
+  const queries = [];
+  const rows = [
+    {
+      studentId: 12,
+      quizId: 5,
+      quizTitle: 'Quiz',
+      score: '7.50',
+      attemptStatus: 'SUBMITTED',
+      submittedAt: new Date('2026-11-25T01:00:00.000Z'),
+      visibleToStudent: 1
+    },
+    {
+      studentId: 13,
+      quizId: 5,
+      quizTitle: 'Quiz',
+      score: null,
+      attemptStatus: null,
+      submittedAt: null,
+      visibleToStudent: 0
+    }
+  ];
+  const repository = createQuizResultsRepository(
+    {
+      async query(sql, values) {
+        queries.push({ sql, values });
+        return [rows];
+      }
+    },
+    { now: () => now }
+  );
+
+  const results = await repository.getQuizScoresForCourse(8, [12, 13, 12]);
+
+  assert.equal(queries.length, 1);
+  assert.match(queries[0].sql, /q\.status IN \('PUBLISHED', 'CLOSED'\)/);
+  assert.match(queries[0].sql, /LEFT JOIN attempts/);
+  assert.deepEqual(queries[0].values, [now, 12, 13, 8]);
+  assert.deepEqual(results, [
+    {
+      studentId: 12,
+      quizId: 5,
+      quizTitle: 'Quiz',
+      maxScore: 10,
+      score: 7.5,
+      attemptStatus: 'SUBMITTED',
+      submittedAt: '2026-11-25T01:00:00.000Z',
+      visibleToStudent: true
+    },
+    {
+      studentId: 13,
+      quizId: 5,
+      quizTitle: 'Quiz',
+      maxScore: 10,
+      score: null,
+      attemptStatus: null,
+      submittedAt: null,
+      visibleToStudent: false
+    }
+  ]);
+});
+
+test('quizResults implementation and provided fake return the same public shape', async () => {
+  const expected = {
+    studentId: 12,
+    quizId: 5,
+    quizTitle: 'Quiz',
+    maxScore: 10,
+    score: 7.5,
+    attemptStatus: 'SUBMITTED',
+    submittedAt: '2026-11-25T01:00:00.000Z',
+    visibleToStudent: true
+  };
+  const repository = createQuizResultsRepository(
+    {
+      async query() {
+        return [[{
+          ...expected,
+          score: '7.50',
+          visibleToStudent: 1,
+          submittedAt: new Date(expected.submittedAt)
+        }]];
+      }
+    },
+    { now: () => now }
+  );
+  const fake = createQuizResultsFake({
+    courseScores: { 8: [expected] },
+    studentScores: { '8:12': [expected] }
+  });
+
+  assert.deepEqual(
+    Object.keys(await repository.getQuizScoresForCourse(8, [12])),
+    Object.keys(await fake.getQuizScoresForCourse(8, [12]))
+  );
+  assert.deepEqual(
+    await repository.getQuizScoresForStudent(8, 12),
+    await fake.getQuizScoresForStudent(8, 12)
+  );
+  assert.deepEqual(
+    Object.keys((await repository.getQuizScoresForStudent(8, 12))[0]).sort(),
+    Object.keys(expected).sort()
+  );
+});
+
+test('module init registers the real quizResults port and starts the expiry sweep', async () => {
+  const { init } = require('../../src/modules/m3-quiz');
+  const registry = createRegistry();
+  const cronCalls = [];
+  const nowValue = new Date('2026-11-25T01:00:00.000Z');
+  const expectedRows = [{
+    studentId: 12,
+    quizId: 5,
+    quizTitle: 'Quiz',
+    maxScore: 10,
+    score: '8.00',
+    attemptStatus: 'AUTO_SUBMITTED',
+    submittedAt: new Date('2026-11-25T00:30:00.000Z'),
+    visibleToStudent: 1
+  }];
+  init({
+    db: {
+      async query(sql) {
+        assert.match(sql, /FROM quizzes q/);
+        return [expectedRows];
+      }
+    },
+    logger: { error() {} },
+    common: {
+      sanitizeText,
+      withTransaction: async (work) => work({}),
+      clock: { now: () => nowValue }
+    },
+    contracts: registry,
+    cron: {
+      schedule(expression, callback) {
+        cronCalls.push({ expression, callback });
+        return { stop() {} };
+      }
+    }
+  });
+
+  const quizResults = registry.getPort('quizResults');
+  assert.equal(typeof quizResults.getQuizScoresForCourse, 'function');
+  assert.equal(typeof quizResults.getQuizScoresForStudent, 'function');
+  assert.deepEqual(await quizResults.getQuizScoresForStudent(8, 12), [{
+    studentId: 12,
+    quizId: 5,
+    quizTitle: 'Quiz',
+    maxScore: 10,
+    score: 8,
+    attemptStatus: 'AUTO_SUBMITTED',
+    submittedAt: '2026-11-25T00:30:00.000Z',
+    visibleToStudent: true
+  }]);
+  assert.equal(cronCalls[0].expression, '* * * * *');
+});
+
 test('start and save-answer schemas expose the approved session fields', () => {
   assert.equal(
     startAttemptSchema.safeParse({
@@ -358,6 +703,9 @@ test('attempt routes apply defaults and return only the 409 error envelope on se
       );
     },
     async saveAnswer() {
+      throw new ConflictError('Phiên làm bài này đã được thay thế.', null, 'SESSION_REPLACED');
+    },
+    async submitAttempt() {
       throw new ConflictError('Phiên làm bài này đã được thay thế.', null, 'SESSION_REPLACED');
     }
   };
@@ -396,6 +744,15 @@ test('attempt routes apply defaults and return only the 409 error envelope on se
     assert.equal(saveResponse.body.code, 'SESSION_REPLACED');
     assert.deepEqual(saveResponse.body.details, null);
     assert.equal(Object.hasOwn(saveResponse.body, 'questions'), false);
+
+    const submitResponse = await request(app)
+      .post('/api/attempts/71/submit')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ clientInstanceId: 'tab-one', sessionToken: 'old-session' });
+    assert.equal(submitResponse.status, 409);
+    assert.equal(submitResponse.body.code, 'SESSION_REPLACED');
+    assert.deepEqual(submitResponse.body.details, null);
+    assert.equal(Object.hasOwn(submitResponse.body, 'questions'), false);
   } finally {
     db.query = originalQuery;
   }
