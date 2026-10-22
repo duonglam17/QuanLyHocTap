@@ -80,6 +80,171 @@ paths:
           description: All sessions were revoked.
         "401":
           description: Authentication is required.
+  /api/users:
+    get:
+      tags: [M1 Core]
+      summary: Search users with pagination
+      operationId: listUsers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [ADMIN, GIANG_VIEN, SINH_VIEN]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, LOCKED, TEMPORARY_LOCKED]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Paginated accounts. Password hashes are never returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, page, limit]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ManagedUser"
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  limit:
+                    type: integer
+        "401":
+          description: Authentication is required.
+        "403":
+          description: Only Admin can manage users.
+    post:
+      tags: [M1 Core]
+      summary: Create an account with a one-time random initial password
+      operationId: createUser
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUser"
+      responses:
+        "201":
+          description: Account created. The initial password is returned once and must be shared securely.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user, initialPassword]
+                properties:
+                  user:
+                    $ref: "#/components/schemas/ManagedUser"
+                  initialPassword:
+                    type: string
+                    format: password
+        "403":
+          description: Only Admin can manage users.
+        "409":
+          description: Username or email is already in use.
+        "422":
+          description: User details are invalid.
+  /api/users/{userId}/status:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
+    patch:
+      tags: [M1 Core]
+      summary: Lock or unlock an account and revoke its sessions
+      operationId: updateUserStatus
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [ACTIVE, LOCKED]
+      responses:
+        "200":
+          description: Account status changed; existing sessions were invalidated.
+        "403":
+          description: Only Admin can manage users, or Admin attempted to lock their own account.
+        "404":
+          description: Account not found.
+        "422":
+          description: Status is invalid.
+  /api/users/{userId}/role:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
+    patch:
+      tags: [M1 Core]
+      summary: Change an account role and revoke sessions
+      operationId: updateUserRole
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  type: string
+                  enum: [ADMIN, GIANG_VIEN, SINH_VIEN]
+      responses:
+        "200":
+          description: Account role changed; existing sessions were invalidated.
+        "403":
+          description: Only Admin can manage users.
+        "404":
+          description: Account or role not found.
+        "422":
+          description: Role is invalid.
+  /api/users/{userId}:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
+    delete:
+      tags: [M1 Core]
+      summary: Soft-delete an account and revoke its sessions
+      operationId: softDeleteUser
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Account soft-deleted. User records are never hard-deleted.
+        "403":
+          description: Only Admin can manage users.
+        "404":
+          description: Account not found.
   /api/courses:
     get:
       tags: [M1 Core]
@@ -322,6 +487,13 @@ components:
       schema:
         type: integer
         minimum: 1
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
   securitySchemes:
     bearerAuth:
       type: http
@@ -355,6 +527,53 @@ components:
         status:
           type: string
           enum: [DRAFT, PUBLISHED, ARCHIVED]
+    ManagedUser:
+      type: object
+      required:
+        [id, username, email, fullName, role, status, mustChangePassword]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        fullName:
+          type: string
+        role:
+          type: string
+          enum: [ADMIN, GIANG_VIEN, SINH_VIEN]
+        status:
+          type: string
+          enum: [ACTIVE, LOCKED, TEMPORARY_LOCKED]
+        mustChangePassword:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreateUser:
+      type: object
+      required: [fullName, username, email, role]
+      properties:
+        fullName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        username:
+          type: string
+          minLength: 1
+          maxLength: 50
+        email:
+          type: string
+          format: email
+          maxLength: 100
+        role:
+          type: string
+          enum: [ADMIN, GIANG_VIEN, SINH_VIEN]
     CourseInput:
       type: object
       required: [code, title, semester]
