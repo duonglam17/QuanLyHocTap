@@ -92,3 +92,11 @@ PR 0 provides the shared scaffold. PR 1 implements M1 authentication; course and
 - Locking, unlocking, changing a role, and soft deletion increment `token_version` and revoke refresh tokens in one transaction so existing access tokens cannot keep their old status or role.
 - A user cannot lock their own account. Deleted accounts are excluded from search and authentication; user rows are never hard-deleted.
 - The migration's `deleted_at`, `token_version`, `must_change_password`, role foreign key, and unique username/email columns already support this step; PR 3 adds no migration.
+
+## M1 lessons and materials (PR 4)
+
+- `POST /api/courses/:courseId/lessons` creates a lesson only for the owning instructor. `GET /api/courses/:courseId/lessons` lists accessible lessons and material metadata.
+- `POST /api/lessons/:lessonId/materials` accepts multipart fields `title` and `file`; files are limited to 50 MiB and the `.pdf`, `.docx`, `.pptx`, `.zip`, and `.rar` allowlist. The shared storage helper checks magic bytes, stores a UUID filename outside the web root, and preserves the sanitized original filename as metadata.
+- A file is removed immediately if its material row cannot be written. If immediate cleanup also fails, M1 logs and retries that known orphan through an `init(ctx)`-started job every 30 minutes. The retry queue is limited to failed M1 material writes so it never removes unrelated M2/M3 uploads from the shared storage root.
+- `GET /api/courses/:courseId/materials/:materialId/download` verifies the course/material association and checks course ownership or student enrollment before opening the storage stream. Responses use attachment disposition with the original filename.
+- Archived courses remain readable by authorized members, but lessons/materials cannot be added. No schema change was needed; the existing lessons/materials migration already contains all required columns.
