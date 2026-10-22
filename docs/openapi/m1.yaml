@@ -245,6 +245,117 @@ paths:
           description: Only Admin can manage users.
         "404":
           description: Account not found.
+  /api/courses/{courseId}/lessons:
+    parameters:
+      - $ref: "#/components/parameters/CourseId"
+    get:
+      tags: [M1 Core]
+      summary: List lessons and their materials for an accessible course
+      operationId: listCourseLessons
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Lessons with material metadata, excluding physical storage paths.
+        "403":
+          description: Caller is neither the course owner nor an enrolled student.
+        "404":
+          description: Course not found.
+    post:
+      tags: [M1 Core]
+      summary: Create a lesson in an instructor-owned course
+      operationId: createLesson
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LessonInput"
+      responses:
+        "201":
+          description: Lesson created.
+        "403":
+          description: Caller is not the instructor who owns the course.
+        "404":
+          description: Course not found.
+        "422":
+          description: Lesson details are invalid.
+  /api/lessons/{lessonId}/materials:
+    parameters:
+      - $ref: "#/components/parameters/LessonId"
+    get:
+      tags: [M1 Core]
+      summary: List materials for an accessible lesson
+      operationId: listLessonMaterials
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Material metadata visible to an authorized course member.
+        "403":
+          description: Caller has no access to the lesson's course.
+        "404":
+          description: Lesson not found.
+    post:
+      tags: [M1 Core]
+      summary: Upload a lesson material
+      operationId: uploadLessonMaterial
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [title, file]
+              properties:
+                title:
+                  type: string
+                  maxLength: 200
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: File was validated, stored with a UUID, and linked to the lesson.
+        "400":
+          description: File is missing, unsupported, malformed, or larger than 50 MB.
+        "403":
+          description: Caller is not the instructor who owns the lesson's course.
+        "404":
+          description: Lesson not found.
+        "422":
+          description: Material title is invalid.
+  /api/courses/{courseId}/materials/{materialId}/download:
+    parameters:
+      - $ref: "#/components/parameters/CourseId"
+      - name: materialId
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    get:
+      tags: [M1 Core]
+      summary: Stream an authorized course material
+      operationId: downloadCourseMaterial
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The original filename is sent as an attachment after access checks.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "403":
+          description: Caller is neither the course owner nor an enrolled student.
+        "404":
+          description: Material is not part of the course.
   /api/courses:
     get:
       tags: [M1 Core]
@@ -494,6 +605,13 @@ components:
       schema:
         type: integer
         minimum: 1
+    LessonId:
+      name: lessonId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
   securitySchemes:
     bearerAuth:
       type: http
@@ -574,6 +692,20 @@ components:
         role:
           type: string
           enum: [ADMIN, GIANG_VIEN, SINH_VIEN]
+    LessonInput:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        content:
+          type: string
+          nullable: true
+        orderIndex:
+          type: integer
+          minimum: 1
     CourseInput:
       type: object
       required: [code, title, semester]
