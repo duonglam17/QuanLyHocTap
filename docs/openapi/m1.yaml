@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: LMS Mini M1 API
   version: 1.0.0
-  description: M1 authentication endpoints and module availability route.
+  description: M1 authentication, course, enrollment, and module availability endpoints.
 servers:
   - url: http://localhost:5000
 tags:
@@ -80,6 +80,220 @@ paths:
           description: All sessions were revoked.
         "401":
           description: Authentication is required.
+  /api/courses:
+    get:
+      tags: [M1 Core]
+      summary: List courses visible to the authenticated user
+      operationId: listCourses
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Courses visible to the current user.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Course"
+        "401":
+          description: Authentication is required.
+    post:
+      tags: [M1 Core]
+      summary: Create a draft course
+      operationId: createCourse
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CourseInput"
+      responses:
+        "201":
+          description: Course created in DRAFT status.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [course]
+                properties:
+                  course:
+                    $ref: "#/components/schemas/Course"
+        "403":
+          description: Only an instructor can create a course.
+        "422":
+          description: Course input is invalid.
+  /api/courses/enroll:
+    post:
+      tags: [M1 Core]
+      summary: Enroll in a published course using its case-sensitive key
+      operationId: enrollByCode
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enrollment_key]
+              properties:
+                enrollment_key:
+                  type: string
+                  minLength: 6
+                  maxLength: 8
+      responses:
+        "201":
+          description: Enrollment created.
+        "400":
+          description: Enrollment key is required.
+        "403":
+          description: Only a student can enroll.
+        "404":
+          description: Key not found or course is not published.
+        "409":
+          description: Student is already enrolled.
+        "429":
+          description: Enrollment rate limit exceeded.
+  /api/courses/{courseId}:
+    parameters:
+      - $ref: "#/components/parameters/CourseId"
+    get:
+      tags: [M1 Core]
+      summary: Get a course visible to the authenticated user
+      operationId: getCourse
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Course details.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [course]
+                properties:
+                  course:
+                    $ref: "#/components/schemas/Course"
+        "403":
+          description: User cannot access this course.
+        "404":
+          description: Course not found.
+    patch:
+      tags: [M1 Core]
+      summary: Update course details
+      operationId: updateCourse
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CourseUpdate"
+      responses:
+        "200":
+          description: Course updated.
+        "403":
+          description: Caller is not the course owner.
+        "404":
+          description: Course not found.
+        "409":
+          description: Course is archived or enrollment key is already used.
+        "422":
+          description: Course input is invalid.
+    delete:
+      tags: [M1 Core]
+      summary: Soft-delete an empty course or archive a course with data
+      operationId: deleteOrArchiveCourse
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Course was archived or soft-deleted; it was never hard-deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [courseId, status, archived]
+                properties:
+                  courseId:
+                    type: integer
+                  status:
+                    type: string
+                    enum: [DRAFT, PUBLISHED, ARCHIVED]
+                  archived:
+                    type: boolean
+                  deleted:
+                    type: boolean
+        "403":
+          description: Caller is not the course owner.
+        "404":
+          description: Course not found.
+  /api/courses/{courseId}/publish:
+    parameters:
+      - $ref: "#/components/parameters/CourseId"
+    patch:
+      tags: [M1 Core]
+      summary: Publish a draft course and enable enrollment
+      operationId: publishCourse
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Course is published.
+        "403":
+          description: Caller is not the course owner.
+        "404":
+          description: Course not found.
+        "409":
+          description: Archived courses cannot be published.
+  /api/courses/{courseId}/archive:
+    parameters:
+      - $ref: "#/components/parameters/CourseId"
+    patch:
+      tags: [M1 Core]
+      summary: Archive a course
+      operationId: archiveCourse
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Course is archived and read-only.
+        "403":
+          description: Caller is neither an administrator nor the course owner.
+        "404":
+          description: Course not found.
+  /api/courses/{courseId}/enrollments/{studentId}:
+    parameters:
+      - $ref: "#/components/parameters/CourseId"
+      - name: studentId
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    delete:
+      tags: [M1 Core]
+      summary: Remove an enrolled student who has no assessment or quiz records
+      operationId: removeEnrollment
+      security:
+        - bearerAuth: []
+      responses:
+        "204":
+          description: Enrollment removed.
+        "403":
+          description: Caller is neither an administrator nor the course owner.
+        "404":
+          description: Course or enrollment not found.
+        "409":
+          description: Student has assessment or quiz data, or the enrollment changed.
   /api/m1-core/ping:
     get:
       tags: [M1 Core]
@@ -100,12 +314,92 @@ paths:
                     type: string
                     example: m1-core
 components:
+  parameters:
+    CourseId:
+      name: courseId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
   schemas:
+    Course:
+      type: object
+      required: [id, code, title, semester, ownerId, status]
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+          maxLength: 20
+        title:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+        semester:
+          type: string
+          maxLength: 20
+        ownerId:
+          type: integer
+        enrollment_key:
+          type: string
+          minLength: 6
+          maxLength: 8
+        status:
+          type: string
+          enum: [DRAFT, PUBLISHED, ARCHIVED]
+    CourseInput:
+      type: object
+      required: [code, title, semester]
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 20
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+        semester:
+          type: string
+          minLength: 1
+          maxLength: 20
+        enrollmentKey:
+          type: string
+          pattern: "^[A-Za-z0-9]{6,8}$"
+          description: Omit to generate a unique six-character uppercase alphanumeric key.
+    CourseUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 20
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+        semester:
+          type: string
+          minLength: 1
+          maxLength: 20
+        enrollmentKey:
+          type: string
+          pattern: "^[A-Za-z0-9]{6,8}$"
     AuthSession:
       type: object
       required: [accessToken, refreshToken, user]
