@@ -14,10 +14,14 @@ const createNotificationRoutes = require('./routes/notificationRoutes');
 const createQuizRepository = require('./repositories/quizRepository');
 const { createQuizService } = require('./services/quizService');
 const createQuizRoutes = require('./routes/quizRoutes');
+const createAttemptRepository = require('./repositories/attemptRepository');
+const { createAttemptService } = require('./services/attemptService');
+const createAttemptRoutes = require('./routes/attemptRoutes');
 
 const router = Router();
 let notificationService;
 let quizService;
+let attemptService;
 
 const notificationsPort = {
   notifyUser(...args) {
@@ -61,6 +65,14 @@ router.get('/ping', (req, res) => {
 
 router.use('/notifications', createNotificationRoutes(notificationsPort));
 router.use(createQuizRoutes(quizRoutesService));
+router.use(createAttemptRoutes({
+  startAttempt(...args) {
+    return attemptService.startAttempt(...args);
+  },
+  saveAnswer(...args) {
+    return attemptService.saveAnswer(...args);
+  }
+}));
 
 function init(ctx) {
   const repository = createNotificationRepository(ctx.db);
@@ -87,6 +99,14 @@ function init(ctx) {
     hasUserData(...args) {
       return quizRepository.hasUserData(...args);
     }
+  });
+
+  const attemptRepository = createAttemptRepository(ctx.db);
+  attemptService = createAttemptService({
+    repository: attemptRepository,
+    getCourseAccess: () => ctx.contracts.getPort('courseAccess', { optional: true }),
+    withTransaction: ctx.common.withTransaction,
+    clock: ctx.common.clock
   });
 }
 

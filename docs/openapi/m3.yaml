@@ -251,6 +251,119 @@ paths:
           description: Quiz does not exist
         '409':
           description: Quiz is not a draft or its course is archived
+  /api/quizzes/{quizId}/start:
+    post:
+      tags:
+        - M3 Quiz
+      summary: Start or resume the authenticated student's quiz attempt
+      operationId: startOrResumeQuizAttempt
+      security:
+        - bearerAuth: []
+      x-user-story: US-11
+      x-allowed-roles:
+        - SINH_VIEN
+      parameters:
+        - name: quizId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[1-9]\d*$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartAttemptRequest'
+            example:
+              clientInstanceId: 22c0414d-547c-47d6-b469-45ead5687ea2
+              takeOver: false
+      responses:
+        '200':
+          description: Attempt started or resumed for this client instance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttemptSession'
+        '401':
+          description: Authentication is required
+        '403':
+          description: Student is not enrolled in the course
+        '404':
+          description: Quiz or course does not exist
+        '409':
+          description: |
+            The quiz is not open, the attempt has expired or was submitted,
+            another client instance owns the session, or the takeover limit was reached.
+            Conflict responses contain only the standard error envelope and never include questions or answers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttemptConflict'
+              examples:
+                activeElsewhere:
+                  value:
+                    code: SESSION_ACTIVE_ELSEWHERE
+                    message: Lượt thi đang hoạt động ở một cửa sổ khác.
+                    details: null
+                takeoverLimit:
+                  value:
+                    code: SESSION_TAKEOVER_LIMIT
+                    message: Đã vượt quá số lần chiếm quyền phiên cho lượt thi này.
+                    details: null
+  /api/attempts/{attemptId}/save-answer:
+    patch:
+      tags:
+        - M3 Quiz
+      summary: Save one answer for the authenticated student's active attempt
+      operationId: saveQuizAttemptAnswer
+      security:
+        - bearerAuth: []
+      x-user-story: US-11
+      x-allowed-roles:
+        - SINH_VIEN
+      parameters:
+        - name: attemptId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[1-9]\d*$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveAttemptAnswerRequest'
+      responses:
+        '200':
+          description: Answer saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveAttemptAnswerResponse'
+        '401':
+          description: Authentication is required
+        '403':
+          description: Attempt does not belong to the authenticated student
+        '404':
+          description: Attempt does not exist
+        '409':
+          description: |
+            The attempt expired, was submitted, or this client session has been replaced.
+            SESSION_REPLACED responses never include questions or answers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttemptConflict'
+              examples:
+                sessionReplaced:
+                  value:
+                    code: SESSION_REPLACED
+                    message: Phiên làm bài này đã được thay thế.
+                    details: null
+        '422':
+          description: Question, option, or session input is invalid
 components:
   securitySchemes:
     bearerAuth:
@@ -455,3 +568,155 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/QuizQuestion'
+    StartAttemptRequest:
+      type: object
+      required:
+        - clientInstanceId
+      properties:
+        clientInstanceId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Stable identifier for this browser tab and reloads of that tab.
+        takeOver:
+          type: boolean
+          default: false
+          description: Explicitly replace another active tab session; never enabled implicitly.
+    AttemptOption:
+      type: object
+      required:
+        - id
+        - content
+        - orderIndex
+      properties:
+        id:
+          type: integer
+          format: int64
+        content:
+          type: string
+        orderIndex:
+          type: integer
+    AttemptQuestion:
+      type: object
+      required:
+        - id
+        - content
+        - orderIndex
+        - options
+      properties:
+        id:
+          type: integer
+          format: int64
+        content:
+          type: string
+        orderIndex:
+          type: integer
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttemptOption'
+      description: Deliberately excludes correctness information.
+    SavedAttemptAnswer:
+      type: object
+      required:
+        - questionId
+        - optionId
+      properties:
+        questionId:
+          type: integer
+          format: int64
+        optionId:
+          type: integer
+          format: int64
+    AttemptSession:
+      type: object
+      required:
+        - attemptId
+        - clientInstanceId
+        - sessionToken
+        - startedAt
+        - expiresAt
+        - remaining_seconds
+        - questions
+        - savedAnswers
+      properties:
+        attemptId:
+          type: integer
+          format: int64
+        clientInstanceId:
+          type: string
+        sessionToken:
+          type: string
+          maxLength: 64
+        startedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        remaining_seconds:
+          type: integer
+          minimum: 0
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttemptQuestion'
+        savedAnswers:
+          type: array
+          items:
+            $ref: '#/components/schemas/SavedAttemptAnswer'
+    SaveAttemptAnswerRequest:
+      type: object
+      required:
+        - questionId
+        - optionId
+        - clientInstanceId
+        - sessionToken
+      properties:
+        questionId:
+          type: integer
+          format: int64
+        optionId:
+          type: integer
+          format: int64
+        clientInstanceId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        sessionToken:
+          type: string
+          minLength: 1
+          maxLength: 64
+    SaveAttemptAnswerResponse:
+      type: object
+      required:
+        - saved
+        - remaining_seconds
+      properties:
+        saved:
+          type: boolean
+          enum:
+            - true
+        remaining_seconds:
+          type: integer
+          minimum: 0
+    AttemptConflict:
+      type: object
+      required:
+        - code
+        - message
+        - details
+      properties:
+        code:
+          type: string
+          enum:
+            - SESSION_ACTIVE_ELSEWHERE
+            - SESSION_REPLACED
+            - SESSION_TAKEOVER_LIMIT
+            - ATTEMPT_EXPIRED
+            - ATTEMPT_ALREADY_SUBMITTED
+            - QUIZ_NOT_OPEN
+        message:
+          type: string
+        details:
+          nullable: true
