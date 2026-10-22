@@ -80,6 +80,14 @@ function init(ctx) {
     withTransaction: ctx.common.withTransaction,
     sanitizeText: ctx.common.sanitizeText
   });
+  ctx.contracts.registerPort('quizUsage', {
+    hasCourseData(...args) {
+      return quizRepository.hasCourseData(...args);
+    },
+    hasUserData(...args) {
+      return quizRepository.hasUserData(...args);
+    }
+  });
 }
 
 // Sau này các route nghiệp vụ sẽ được gắn tại đây:
