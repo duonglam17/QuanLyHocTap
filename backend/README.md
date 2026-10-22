@@ -84,3 +84,11 @@ PR 0 provides the shared scaffold. PR 1 implements M1 authentication; course and
 - Students join using `POST /api/courses/enroll` with `enrollment_key`. The key comparison is case-sensitive; only published courses accept enrollments. The endpoint is limited to five attempts per IP per minute.
 - An instructor or admin can remove a student using `DELETE /api/courses/:courseId/enrollments/:studentId` only when both optional usage Ports confirm the student has no assessment or quiz records. Missing usage providers conservatively block removal.
 - M1 registers the real `courseAccess` Port during module `init(ctx)`; consumers resolve it through the app's contract registry while handling requests.
+
+## M1 admin user management (PR 3)
+
+- Admin-only routes under `/api/users` support paginated search/filter, account creation, role changes, status lock/unlock, and soft deletion.
+- Account creation generates a cryptographically random initial password and stores only its bcrypt hash (work factor 10). The password is returned once in the create response for secure handoff and `must_change_password` is set; the API never logs the password.
+- Locking, unlocking, changing a role, and soft deletion increment `token_version` and revoke refresh tokens in one transaction so existing access tokens cannot keep their old status or role.
+- A user cannot lock their own account. Deleted accounts are excluded from search and authentication; user rows are never hard-deleted.
+- The migration's `deleted_at`, `token_version`, `must_change_password`, role foreign key, and unique username/email columns already support this step; PR 3 adds no migration.
