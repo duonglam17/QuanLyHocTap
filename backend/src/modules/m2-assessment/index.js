@@ -8,7 +8,14 @@
  */
 
 const { Router } = require('express');
+const { router: assignmentRoutes } = require('./routes/assignmentRoutes');
+const { router: submissionRoutes } = require('./routes/submissionRoutes');
+const { router: gradeRoutes } = require('./routes/gradeRoutes');
 const { router: studentGradebookRoutes } = require('./routes/studentGradebookRoutes');
+const { createClassGradebookRouter } = require('./routes/classGradebookRoutes');
+const ClassGradebookController = require('./controllers/classGradebookController');
+const ClassGradebookService = require('./services/classGradebookService');
+const ClassGradebookRepository = require('./repositories/classGradebookRepository');
 const AssessmentUsageRepository = require('./repositories/assessmentUsageRepository');
 
 const router = Router();
@@ -23,7 +30,26 @@ router.get('/ping', (req, res) => {
   });
 });
 
-router.use('/m2-assessment', studentGradebookRoutes);
+router.use(assignmentRoutes);
+router.use(submissionRoutes);
+router.use(gradeRoutes);
+router.use(studentGradebookRoutes);
+router.use(
+  createClassGradebookRouter({
+    controller: new ClassGradebookController(
+      new ClassGradebookService({
+        gradebookRepository: new ClassGradebookRepository()
+      })
+    )
+  })
+);
+
+function init(ctx) {
+  ctx.contracts.registerPort(
+    'assessmentUsage',
+    new AssessmentUsageRepository(ctx.db)
+  );
+}
 
 function init(ctx) {
   ctx.contracts.registerPort(

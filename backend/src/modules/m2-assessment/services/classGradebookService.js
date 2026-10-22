@@ -1,4 +1,9 @@
-const { AppError, ForbiddenError, ValidationError } = require('../../../common/errors');
+const {
+  AppError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError
+} = require('../../../common/errors');
 const logger = require('../../../common/logger');
 const { getPort } = require('../../../contracts');
 
@@ -12,35 +17,39 @@ class ClassGradebookService {
 
   async _getCourseAccess(courseId, instructorId) {
     const courseAccess = this.getPort('courseAccess', { optional: true });
-    if (!courseAccess) {
+    if (
+      !courseAccess ||
+      typeof courseAccess.getCourse !== 'function' ||
+      typeof courseAccess.isOwner !== 'function'
+    ) {
       logger.warn('Port "courseAccess" chưa được đăng ký; không thể xác minh chủ khóa.');
       throw new AppError('Không thể xác minh quyền truy cập khóa học.', 'PORT_UNAVAILABLE', 503);
     }
 
-    let isOwner = false;
-    if (typeof courseAccess.isOwner === 'function') {
-      isOwner = await courseAccess.isOwner(courseId, instructorId);
-    } else if (typeof courseAccess.validateCourseOwner === 'function') {
-      const result = await courseAccess.validateCourseOwner(courseId, instructorId);
-      isOwner = result === true || result?.isOwner === true;
+    const course = await courseAccess.getCourse(courseId);
+    if (!course) {
+      throw new NotFoundError('Không tìm thấy khóa học yêu cầu.');
     }
-    if (!isOwner) {
+    if (!(await courseAccess.isOwner(instructorId, courseId))) {
       throw new ForbiddenError('Chỉ chủ khóa học mới được xem hoặc xuất bảng điểm lớp.');
     }
-    if (typeof courseAccess.listEnrolledStudents !== 'function') {
-      logger.warn('Port "courseAccess.listEnrolledStudents" chưa sẵn sàng.');
+    if (
+      typeof courseAccess.listEnrolledStudents !== 'function' ||
+      typeof courseAccess.getEnrolledStudentIds !== 'function'
+    ) {
+      logger.warn('Port courseAccess chưa hỗ trợ danh sách sinh viên khóa học.');
       throw new AppError('Danh sách sinh viên khóa học hiện chưa khả dụng.', 'PORT_UNAVAILABLE', 503);
     }
     return courseAccess;
   }
 
-  async _getQuizScores(courseId) {
+  async _getQuizScores(courseId, studentIds) {
     const quizResults = this.getPort('quizResults', { optional: true });
     if (!quizResults || typeof quizResults.getQuizScoresForCourse !== 'function') {
       logger.warn('Port "quizResults.getQuizScoresForCourse" chưa sẵn sàng.');
       throw new AppError('Điểm trắc nghiệm hiện chưa khả dụng.', 'PORT_UNAVAILABLE', 503);
     }
-    const result = await quizResults.getQuizScoresForCourse(courseId);
+    const result = await quizResults.getQuizScoresForCourse(courseId, studentIds);
     if (!Array.isArray(result)) {
       throw new TypeError('quizResults.getQuizScoresForCourse phải trả về một mảng.');
     }
@@ -48,18 +57,15 @@ class ClassGradebookService {
   }
 
   _normalizeRosterPage(result) {
-    if (Array.isArray(result)) {
-      return { students: result, total: result.length };
-    }
-    if (!result || !Array.isArray(result.students) || !Number.isInteger(result.total)) {
+    if (!result || !Array.isArray(result.items) || !Number.isInteger(result.total)) {
       throw new TypeError('courseAccess.listEnrolledStudents trả về dữ liệu trang không hợp lệ.');
     }
-    return result;
+    return { students: result.items, total: result.total };
   }
 
   async _loadPage({ courseId, courseAccess, assignments, quizScores, page }) {
     const roster = this._normalizeRosterPage(
-      await courseAccess.listEnrolledStudents(courseId, { page, pageSize: PAGE_SIZE })
+      await courseAccess.listEnrolledStudents(courseId, { page, limit: PAGE_SIZE })
     );
     const scoreRows = await this.gradebookRepository.findAssignmentScoresForStudents(
       courseId,
@@ -74,14 +80,14 @@ class ClassGradebookService {
     );
     const quizScoresByStudent = new Map();
     for (const quizScore of quizScores) {
-      const key = String(quizScore.studentId ?? quizScore.student_id);
+      const key = String(quizScore.studentId);
       if (!quizScoresByStudent.has(key)) {
         quizScoresByStudent.set(key, new Map());
       }
       quizScoresByStudent
         .get(key)
         .set(
-          String(quizScore.quizId ?? quizScore.quiz_id),
+          String(quizScore.quizId),
           quizScore.score === null || quizScore.score === undefined
             ? null
             : Number(quizScore.score)
@@ -116,11 +122,11 @@ class ClassGradebookService {
   _quizDefinitions(quizScores) {
     const quizzes = new Map();
     for (const score of quizScores) {
-      const id = score.quizId ?? score.quiz_id;
+      const id = score.quizId;
       if (id !== undefined && id !== null && !quizzes.has(String(id))) {
         quizzes.set(String(id), {
           id,
-          title: score.title || `Quiz ${id}`
+          title: score.quizTitle || `Quiz ${id}`
         });
       }
     }
@@ -128,15 +134,26 @@ class ClassGradebookService {
   }
 
   async _prepare({ courseId, instructorId }) {
-    if (!courseId || !instructorId) {
+    const numericCourseId = Number(courseId);
+    const numericInstructorId = Number(instructorId);
+    if (
+      !Number.isSafeInteger(numericCourseId) ||
+      numericCourseId <= 0 ||
+      !Number.isSafeInteger(numericInstructorId) ||
+      numericInstructorId <= 0
+    ) {
       throw new ValidationError('Mã khóa học và danh tính giảng viên là bắt buộc.');
     }
-    const courseAccess = await this._getCourseAccess(courseId, instructorId);
-    const [assignments, quizScores] = await Promise.all([
-      this.gradebookRepository.findCourseAssignments(courseId),
-      this._getQuizScores(courseId)
+    const courseAccess = await this._getCourseAccess(numericCourseId, numericInstructorId);
+    const [assignments, studentIds] = await Promise.all([
+      this.gradebookRepository.findCourseAssignments(numericCourseId),
+      courseAccess.getEnrolledStudentIds(numericCourseId)
     ]);
-    return { courseAccess, assignments, quizScores };
+    if (!Array.isArray(studentIds)) {
+      throw new TypeError('courseAccess.getEnrolledStudentIds phải trả về một mảng.');
+    }
+    const quizScores = await this._getQuizScores(numericCourseId, studentIds);
+    return { courseAccess, assignments, quizScores, courseId: numericCourseId };
   }
 
   async getCourseGradebook({ courseId, instructorId, page = 1 }) {
@@ -145,7 +162,10 @@ class ClassGradebookService {
       throw new ValidationError('Số trang phải là số nguyên dương.');
     }
     const prepared = await this._prepare({ courseId, instructorId });
-    const { students, total } = await this._loadPage({ ...prepared, courseId, page: pageNumber });
+    const { students, total } = await this._loadPage({
+      ...prepared,
+      page: pageNumber
+    });
     return {
       data: students,
       assignments: prepared.assignments.map((assignment) => ({
@@ -178,7 +198,7 @@ class ClassGradebookService {
       let page = 1;
       let total = 0;
       do {
-        const result = await service._loadPage({ ...prepared, courseId, page });
+        const result = await service._loadPage({ ...prepared, page });
         total = result.total;
         for (const student of result.students) {
           yield [

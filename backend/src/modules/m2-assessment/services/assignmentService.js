@@ -5,7 +5,11 @@
  */
 
 const { getPort } = require('../../../contracts');
-const { ValidationError, ForbiddenError, NotFoundError } = require('../../../common/errors');
+const {
+  ValidationError,
+  ForbiddenError,
+  NotFoundError
+} = require('../../../common/errors');
 const logger = require('../../../common/logger');
 const { sanitizeText } = require('../utils/sanitizer');
 
@@ -26,23 +30,20 @@ class AssignmentService {
    * Kiểm tra quyền sở hữu khóa học qua Port courseAccess (BR-03)
    */
   async _assertCourseOwner(courseId, instructorId, courseAccessPort) {
-    if (!courseAccessPort) {
+    if (
+      !courseAccessPort ||
+      typeof courseAccessPort.getCourse !== 'function' ||
+      typeof courseAccessPort.isOwner !== 'function'
+    ) {
       logger.warn('Port "courseAccess" chưa được đăng ký; không thể xác minh quyền sở hữu khóa học.');
       throw new ForbiddenError('Không thể xác minh quyền sở hữu khóa học.');
     }
 
-    let isOwner = false;
-    if (typeof courseAccessPort.isOwner === 'function') {
-      isOwner = await courseAccessPort.isOwner(courseId, instructorId);
-    } else if (typeof courseAccessPort.validateCourseOwner === 'function') {
-      const res = await courseAccessPort.validateCourseOwner(courseId, instructorId);
-      isOwner = Boolean(res && (res.isOwner === true || res === true));
-    } else {
-      logger.warn('Port "courseAccess" không hỗ trợ kiểm tra quyền sở hữu khóa học.');
-      throw new ForbiddenError('Không thể xác minh quyền sở hữu khóa học.');
+    const course = await courseAccessPort.getCourse(courseId);
+    if (!course) {
+      throw new NotFoundError('Không tìm thấy khóa học yêu cầu.');
     }
-
-    if (!isOwner) {
+    if (!(await courseAccessPort.isOwner(instructorId, courseId))) {
       throw new ForbiddenError('Chỉ chủ khóa học mới có quyền thực hiện thao tác này (BR-03).');
     }
   }
@@ -52,33 +53,10 @@ class AssignmentService {
    * Không cho phép tạo bài tập trong khóa học đã ARCHIVED hoặc chỉ đọc
    */
   async _assertCourseWritable(courseId, courseAccessPort) {
-    if (!courseAccessPort) {
+    if (!courseAccessPort || typeof courseAccessPort.assertCourseWritable !== 'function') {
       throw new ForbiddenError('Không thể xác minh khóa học còn quyền ghi.');
     }
-
-    if (typeof courseAccessPort.assertCourseWritable === 'function') {
-      await courseAccessPort.assertCourseWritable(courseId);
-      return;
-    }
-
-    if (typeof courseAccessPort.isCourseWritable === 'function') {
-      const writable = await courseAccessPort.isCourseWritable(courseId);
-      if (!writable) {
-        throw new ForbiddenError('Khóa học đã đóng hoặc được lưu trữ (chỉ đọc), không thể thêm bài tập mới.');
-      }
-      return;
-    }
-
-    if (typeof courseAccessPort.getCourse === 'function') {
-      const course = await courseAccessPort.getCourse(courseId);
-      if (!course || course.status === 'ARCHIVED' || course.deleted_at) {
-        throw new ForbiddenError('Khóa học đã đóng hoặc được lưu trữ (chỉ đọc), không thể thêm bài tập mới.');
-      }
-      return;
-    }
-
-    logger.warn('Port "courseAccess" không hỗ trợ kiểm tra quyền ghi của khóa học.');
-    throw new ForbiddenError('Không thể xác minh khóa học còn quyền ghi.');
+    await courseAccessPort.assertCourseWritable(courseId);
   }
 
   async _withTransaction(work) {
@@ -125,7 +103,8 @@ class AssignmentService {
     allowLate = false
   }) {
     // 1. Kiểm tra tham số cơ bản
-    if (!courseId) {
+    const numericCourseId = Number(courseId);
+    if (!Number.isSafeInteger(numericCourseId) || numericCourseId <= 0) {
       throw new ValidationError('Mã khóa học (courseId) là bắt buộc.');
     }
     if (!instructorId) {
@@ -180,14 +159,14 @@ class AssignmentService {
 
     // 5. Kiểm tra quyền sở hữu & tính khả ghi qua Port courseAccess
     const courseAccessPort = this.getPort('courseAccess', { optional: true });
-    await this._assertCourseOwner(courseId, instructorId, courseAccessPort);
-    await this._assertCourseWritable(courseId, courseAccessPort);
+    await this._assertCourseOwner(numericCourseId, instructorId, courseAccessPort);
+    await this._assertCourseWritable(numericCourseId, courseAccessPort);
 
     // 6. Thực thi ghi dữ liệu trong Database Transaction
     const createdAssignment = await this._withTransaction((connection) =>
       this.assignmentRepository.create(
         {
-          courseId,
+          courseId: numericCourseId,
           createdBy: instructorId,
           title: sanitizedTitle,
           description: sanitizedDescription,
@@ -204,14 +183,13 @@ class AssignmentService {
     const notificationsPort = this.getPort('notifications', { optional: true });
     if (notificationsPort && typeof notificationsPort.notifyCourseStudents === 'function') {
       try {
-        await notificationsPort.notifyCourseStudents(courseId, {
+        await notificationsPort.notifyCourseStudents(numericCourseId, {
           type: 'NEW_ASSIGNMENT',
           title: `Bài tập mới: ${createdAssignment.title}`,
-          content: `Giảng viên đã giao bài tập mới "${createdAssignment.title}" với hạn nộp là ${dueDateObj.toISOString()}.`,
-          metadata: {
-            assignmentId: createdAssignment.id,
-            dueDate: dueDateObj.toISOString()
-          }
+          message: `Giảng viên đã giao bài tập mới "${createdAssignment.title}" với hạn nộp là ${dueDateObj.toISOString()}.`,
+          refType: 'ASSIGNMENT',
+          refId: createdAssignment.id,
+          link: `/courses/${numericCourseId}/assignments/${createdAssignment.id}`
         });
       } catch (notifyErr) {
         logger.warn(`Gửi thông báo bài tập mới qua NotificationsPort thất bại cho khóa học ${courseId}:`, notifyErr);
@@ -254,6 +232,7 @@ class AssignmentService {
     // Kiểm tra quyền sở hữu khóa học
     const courseAccessPort = this.getPort('courseAccess', { optional: true });
     await this._assertCourseOwner(assignment.courseId, instructorId, courseAccessPort);
+    await this._assertCourseWritable(assignment.courseId, courseAccessPort);
 
     // Đếm số bài nộp liên quan
     return this._withTransaction(async (connection) => {

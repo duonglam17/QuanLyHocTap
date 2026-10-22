@@ -3,11 +3,13 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const express = require('express');
+const fsSync = require('node:fs');
 const jwt = require('jsonwebtoken');
 const request = require('supertest');
 const test = require('node:test');
 
 const config = require('../../src/common/config');
+const db = require('../../src/common/db');
 const errorHandler = require('../../src/common/errorHandler');
 const { ForbiddenError, ValidationError } = require('../../src/common/errors');
 const {
@@ -24,10 +26,18 @@ function createGradeFixture({ owner = true, submission = null } = {}) {
   const notifications = createNotificationsFake();
   const courseAccess = {
     ...createCourseAccessFake(),
-    async validateCourseOwner(courseId, instructorId) {
+    async getCourse(courseId) {
+      return courseId === 9
+        ? { id: 9, ownerId: 3, title: 'Course', status: 'PUBLISHED' }
+        : null;
+    },
+    async isOwner(instructorId, courseId) {
       assert.equal(courseId, 9);
       assert.equal(instructorId, 3);
-      return { courseId, instructorId, isOwner: owner };
+      return owner;
+    },
+    async assertCourseWritable(courseId) {
+      assert.equal(courseId, 9);
     }
   };
   const targetSubmission = submission || {
@@ -122,12 +132,19 @@ test('US-09 grades a submission transactionally, sanitizes feedback, and notifie
   assert.equal(grade.score, 8.5);
   assert.equal(grade.feedback, 'Good  work');
   assert.deepEqual(events, ['begin', 'lock-submission', 'upsert-grade', 'mark-graded', 'commit', 'notify']);
-  assert.equal(notifications.sentUserNotifications.length, 1);
-  assert.equal(notifications.sentUserNotifications[0].userId, 5);
-  assert.equal(
-    notifications.sentUserNotifications[0].notification.type,
-    'ASSIGNMENT_GRADED'
-  );
+  assert.deepEqual(notifications.sentNotifications, [
+    {
+      userId: 5,
+      payload: {
+        type: 'ASSIGNMENT_GRADED',
+        title: 'Bài tập đã được chấm',
+        message: 'Bài tập của bạn đã được chấm: 8.5/10.',
+        refType: 'SUBMISSION',
+        refId: 12,
+        link: '/courses/9/my-grades'
+      }
+    }
+  ]);
 });
 
 test('US-09 rejects a grader who does not own the submission course', async () => {
@@ -143,7 +160,7 @@ test('US-09 rejects a grader who does not own the submission course', async () =
     ForbiddenError
   );
   assert.deepEqual(events, ['begin', 'lock-submission']);
-  assert.equal(notifications.sentUserNotifications.length, 0);
+  assert.equal(notifications.sentNotifications.length, 0);
 });
 
 test('US-09 validates the 0 to 10 range and 0.25 score increments', async () => {
@@ -160,16 +177,22 @@ test('US-09 validates the 0 to 10 range and 0.25 score increments', async () => 
 
 test('US-09 contract fakes expose batched user lookup and individual notifications', async () => {
   const courseAccess = createCourseAccessFake({
-    usersBrief: [{ id: 5, fullName: 'Student Five' }]
+    users: [{ id: 5, username: 'student-five', fullName: 'Student Five', role: 'SINH_VIEN' }]
   });
   const notifications = createNotificationsFake();
 
   assert.deepEqual(await courseAccess.getUsersBrief([5]), [
-    { id: 5, fullName: 'Student Five' }
+    {
+      id: 5,
+      username: 'student-five',
+      fullName: 'Student Five',
+      role: 'SINH_VIEN'
+    }
   ]);
-  await notifications.notifyUser(5, { type: 'ASSIGNMENT_GRADED' });
-  assert.deepEqual(notifications.sentUserNotifications, [
-    { userId: 5, notification: { type: 'ASSIGNMENT_GRADED' } }
+  const payload = { type: 'ASSIGNMENT_GRADED' };
+  await notifications.notifyUser(5, payload);
+  assert.deepEqual(notifications.sentNotifications, [
+    { userId: 5, payload }
   ]);
 });
 
@@ -204,8 +227,11 @@ test('US-09 lists submissions with one batched getUsersBrief Port call', async (
     assert.equal(options.optional, true);
     if (name === 'courseAccess') {
       return {
-        async validateCourseOwner() {
-          return { isOwner: true };
+        async getCourse(courseId) {
+          return { id: courseId, ownerId: 3, title: 'Course', status: 'PUBLISHED' };
+        },
+        async isOwner(userId, courseId) {
+          return userId === 3 && courseId === 9;
         },
         async getUsersBrief(userIds) {
           briefCalls += 1;
@@ -250,6 +276,11 @@ test('US-09 authorizes the course owner before streaming a submission file', asy
   t.after(async () => fs.rm(directory, { recursive: true, force: true }));
 
   const graderId = 3;
+  const originalQuery = db.query;
+  db.query = async () => [[{ status: 'ACTIVE', token_version: 0 }], []];
+  t.after(() => {
+    db.query = originalQuery;
+  });
   let authorizedDownloads = 0;
   const gradeController = new GradeController({
     gradeService: {
@@ -264,28 +295,29 @@ test('US-09 authorizes the course owner before streaming a submission file', asy
           mimeType: 'application/pdf'
         };
       }
-    }
+    },
+    storageClient: { openReadStream: fsSync.createReadStream }
   });
   const app = express();
-  app.use('/api/m2-assessment', createGradeRouter({ gradeController }));
+  app.use('/api', createGradeRouter({ gradeController }));
   app.use(errorHandler);
-  const token = jwt.sign({ id: graderId, role: 'GIANG_VIEN' }, config.JWT_SECRET, {
+  const token = jwt.sign({ id: graderId, role: 'GIANG_VIEN', token_version: 0 }, config.JWT_SECRET, {
     expiresIn: '5m'
   });
 
   const response = await request(app)
-    .get('/api/m2-assessment/submissions/12/download')
+    .get('/api/submissions/12/download')
     .set('Authorization', `Bearer ${token}`);
 
   assert.equal(response.status, 200);
   assert.equal(response.body.toString(), 'submission bytes');
   assert.equal(authorizedDownloads, 1);
 
-  const deniedToken = jwt.sign({ id: 4, role: 'GIANG_VIEN' }, config.JWT_SECRET, {
+  const deniedToken = jwt.sign({ id: 4, role: 'GIANG_VIEN', token_version: 0 }, config.JWT_SECRET, {
     expiresIn: '5m'
   });
   const denied = await request(app)
-    .get('/api/m2-assessment/submissions/12/download')
+    .get('/api/submissions/12/download')
     .set('Authorization', `Bearer ${deniedToken}`);
 
   assert.equal(denied.status, 403);

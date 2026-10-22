@@ -5,6 +5,7 @@ const request = require('supertest');
 const test = require('node:test');
 
 const config = require('../../src/common/config');
+const db = require('../../src/common/db');
 const errorHandler = require('../../src/common/errorHandler');
 const { ForbiddenError } = require('../../src/common/errors');
 const {
@@ -20,7 +21,9 @@ const {
 function createFixture({
   enrolled = true,
   quizScores = [],
-  quizPort = createQuizResultsFake(quizScores),
+  quizPort = createQuizResultsFake({
+    studentScores: { '3:15': quizScores }
+  }),
   assignments = [
     {
       type: 'ASSIGNMENT',
@@ -53,7 +56,8 @@ function createFixture({
 } = {}) {
   const calls = [];
   const courseAccess = createCourseAccessFake({
-    enrollment: { enrolled }
+    courses: [{ id: 3, ownerId: 8, title: 'Course', status: 'PUBLISHED' }],
+    enrolledStudentIds: enrolled ? [15] : []
   });
   const repository = {
     async findByCourseAndStudent(courseId, studentId) {
@@ -95,20 +99,25 @@ test('US-13 returns personal assignment and quiz grades and hides unpublished qu
     quizScores: [
       {
         quizId: 20,
-        title: 'Published quiz',
+        quizTitle: 'Published quiz',
         score: 8,
         maxScore: 10,
+        attemptStatus: 'SUBMITTED',
+        submittedAt: '2026-10-21T11:00:00.000Z',
         visibleToStudent: true
       },
       {
         quizId: 21,
-        title: 'Hidden quiz',
+        quizTitle: 'Hidden quiz',
         score: 10,
+        maxScore: 10,
+        attemptStatus: 'SUBMITTED',
+        submittedAt: '2026-10-21T11:00:00.000Z',
         visibleToStudent: false
       },
       {
         quizId: 22,
-        title: 'Legacy quiz without flag',
+        quizTitle: 'Quiz without visibility',
         score: 7
       }
     ]
@@ -121,9 +130,10 @@ test('US-13 returns personal assignment and quiz grades and hides unpublished qu
   assert.deepEqual(result.assignments.map((item) => item.score), [null, null, 8.5]);
   assert.deepEqual(
     result.quizzes.map((item) => item.title),
-    ['Published quiz', 'Legacy quiz without flag']
+    ['Published quiz']
   );
-  assert.equal(result.quizzes[1].visibleToStudent, true);
+  assert.equal(result.quizzes[0].visibleToStudent, true);
+  assert.equal(result.quizzes[0].status, 'SUBMITTED');
   assert.deepEqual(
     calls.filter((call) => call.operation === 'getPort').map((call) => call.name),
     ['courseAccess', 'quizResults']
@@ -198,7 +208,7 @@ test('US-13 repository joins only the authenticated student submissions and pres
   assert.equal(rows[1].status, 'SUBMITTED');
 });
 
-test('US-13 endpoint derives identity from JWT and ignores any client student_id', async () => {
+test('US-13 endpoint derives identity from JWT and ignores any client student_id', async (t) => {
   let requestedStudentId;
   const controller = {
     async getMyCourseGrades(req, res) {
@@ -210,14 +220,19 @@ test('US-13 endpoint derives identity from JWT and ignores any client student_id
     }
   };
   const app = express();
-  app.use('/api/m2-assessment', createStudentGradebookRouter({ controller }));
+  app.use('/api', createStudentGradebookRouter({ controller }));
   app.use(errorHandler);
-  const token = jwt.sign({ id: 15, role: 'SINH_VIEN' }, config.JWT_SECRET, {
+  const originalQuery = db.query;
+  db.query = async () => [[{ status: 'ACTIVE', token_version: 0 }], []];
+  t.after(() => {
+    db.query = originalQuery;
+  });
+  const token = jwt.sign({ id: 15, role: 'SINH_VIEN', token_version: 0 }, config.JWT_SECRET, {
     expiresIn: '5m'
   });
 
   const response = await request(app)
-    .get('/api/m2-assessment/courses/3/my-grades?student_id=999')
+    .get('/api/courses/3/my-grades?student_id=999')
     .set('Authorization', `Bearer ${token}`);
 
   assert.equal(response.status, 200);
@@ -225,10 +240,10 @@ test('US-13 endpoint derives identity from JWT and ignores any client student_id
   assert.equal(response.body.data.student_id, 15);
 });
 
-test('US-13 rejects non-student roles on the personal gradebook endpoint', async () => {
+test('US-13 rejects non-student roles on the personal gradebook endpoint', async (t) => {
   const app = express();
   app.use(
-    '/api/m2-assessment',
+    '/api',
     createStudentGradebookRouter({
       controller: {
         async getMyCourseGrades(req, res) {
@@ -238,12 +253,17 @@ test('US-13 rejects non-student roles on the personal gradebook endpoint', async
     })
   );
   app.use(errorHandler);
-  const token = jwt.sign({ id: 3, role: 'GIANG_VIEN' }, config.JWT_SECRET, {
+  const originalQuery = db.query;
+  db.query = async () => [[{ status: 'ACTIVE', token_version: 0 }], []];
+  t.after(() => {
+    db.query = originalQuery;
+  });
+  const token = jwt.sign({ id: 3, role: 'GIANG_VIEN', token_version: 0 }, config.JWT_SECRET, {
     expiresIn: '5m'
   });
 
   const response = await request(app)
-    .get('/api/m2-assessment/courses/3/my-grades')
+    .get('/api/courses/3/my-grades')
     .set('Authorization', `Bearer ${token}`);
 
   assert.equal(response.status, 403);

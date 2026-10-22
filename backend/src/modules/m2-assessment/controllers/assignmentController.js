@@ -10,8 +10,8 @@ class AssignmentController {
   }
 
   /**
-   * POST /api/m2-assessment/courses/:courseId/assignments
-   * POST /api/m2-assessment/assignments
+   * POST /api/courses/:courseId/assignments
+   * POST /api/assignments
    * US-07: Giảng viên tạo và giao bài tập mới
    */
   createAssignment = async (req, res, next) => {
@@ -61,7 +61,7 @@ class AssignmentController {
   };
 
   /**
-   * GET /api/m2-assessment/courses/:courseId/assignments
+   * GET /api/courses/:courseId/assignments
    * Lấy danh sách bài tập của khóa học
    */
   getCourseAssignments = async (req, res, next) => {
@@ -80,7 +80,7 @@ class AssignmentController {
   };
 
   /**
-   * GET /api/m2-assessment/assignments/:id
+   * GET /api/assignments/:id
    * Xem chi tiết bài tập
    */
   getAssignmentDetail = async (req, res, next) => {
@@ -98,7 +98,7 @@ class AssignmentController {
   };
 
   /**
-   * DELETE /api/m2-assessment/assignments/:id
+   * DELETE /api/assignments/:id
    * Xóa bài tập (EC-09 kiểm tra bài nộp)
    */
   deleteAssignment = async (req, res, next) => {
@@ -119,4 +119,3 @@ class AssignmentController {
 }
 
 module.exports = AssignmentController;
-

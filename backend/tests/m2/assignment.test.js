@@ -13,7 +13,12 @@ const AssignmentService = require('../../src/modules/m2-assessment/services/assi
 function createCourseAccess({ owner = true, writable = true } = {}) {
   return {
     ...createCourseAccessFake({ courseOwner: { isOwner: owner } }),
-    async isOwner() {
+    async getCourse(courseId) {
+      return { id: courseId, ownerId: 8, title: 'Course', status: 'PUBLISHED' };
+    },
+    async isOwner(userId, courseId) {
+      assert.equal(userId, 8);
+      assert.equal(courseId, 3);
       return owner;
     },
     async assertCourseWritable() {
@@ -109,7 +114,17 @@ test('US-07 creates an assignment transactionally, sanitizes text, and notifies 
   assert.equal(result.id, 11);
   assert.deepEqual(events, ['begin', 'create', 'commit', 'release', 'notify']);
   assert.equal(notifications.sentNotifications.length, 1);
-  assert.equal(notifications.sentNotifications[0].notification.type, 'NEW_ASSIGNMENT');
+  assert.deepEqual(notifications.sentNotifications[0], {
+    courseId: 3,
+    payload: {
+      type: 'NEW_ASSIGNMENT',
+      title: 'Bài tập mới: Essay',
+      message: 'Giảng viên đã giao bài tập mới "Essay" với hạn nộp là 2026-10-22T10:00:00.000Z.',
+      refType: 'ASSIGNMENT',
+      refId: 11,
+      link: '/courses/3/assignments/11'
+    }
+  });
 });
 
 test('US-07 rejects a caller who does not own the course', async () => {
@@ -239,14 +254,15 @@ test('US-07 HTTP endpoint creates only for the course owner', async (t) => {
         assignments.set(id, {
           id,
           course_id: params[0],
-          title: params[1],
-          description: params[2],
-          deadline: params[3],
-          due_date: params[4],
-          max_score: params[5],
-          allow_late: params[6],
-          allow_late_submission: params[7],
-          status: params[8],
+          created_by: params[1],
+          title: params[2],
+          description: params[3],
+          deadline: params[4],
+          due_date: params[5],
+          max_score: params[6],
+          allow_late: params[7],
+          allow_late_submission: params[8],
+          status: params[9],
           created_at: new Date(),
           updated_at: new Date(),
           deleted_at: null
@@ -265,6 +281,7 @@ test('US-07 HTTP endpoint creates only for the course owner', async (t) => {
     }
   };
   const originalGetPool = db.getPool;
+  const originalQuery = db.query;
   db.getPool = () => ({
     async getConnection() {
       return connection;
@@ -272,11 +289,16 @@ test('US-07 HTTP endpoint creates only for the course owner', async (t) => {
   });
   t.after(() => {
     db.getPool = originalGetPool;
+    db.query = originalQuery;
   });
+  db.query = async () => [[{ status: 'ACTIVE', token_version: 0 }], []];
 
   const courseAccess = {
     ...createCourseAccess(),
-    async isOwner(courseId, instructorId) {
+    async getCourse(courseId) {
+      return { id: courseId, ownerId: 8, title: 'Course', status: 'PUBLISHED' };
+    },
+    async isOwner(instructorId, courseId) {
       return Number(courseId) === 3 && Number(instructorId) === 8;
     }
   };
@@ -292,10 +314,12 @@ test('US-07 HTTP endpoint creates only for the course owner', async (t) => {
   const { createApp } = require('../../src/app');
   const app = createApp();
   const token = (id) =>
-    jwt.sign({ id, role: 'GIANG_VIEN' }, config.JWT_SECRET, { expiresIn: '5m' });
+    jwt.sign({ id, role: 'GIANG_VIEN', token_version: 0 }, config.JWT_SECRET, {
+      expiresIn: '5m'
+    });
 
   const created = await request(app)
-    .post('/api/m2-assessment/courses/3/assignments')
+    .post('/api/courses/3/assignments')
     .set('Authorization', `Bearer ${token(8)}`)
     .send({
       title: 'Essay',
@@ -308,7 +332,7 @@ test('US-07 HTTP endpoint creates only for the course owner', async (t) => {
   assert.ok(events.indexOf('commit') < events.indexOf('notify'));
 
   const denied = await request(app)
-    .post('/api/m2-assessment/courses/3/assignments')
+    .post('/api/courses/3/assignments')
     .set('Authorization', `Bearer ${token(9)}`)
     .send({
       title: 'Forbidden essay',
