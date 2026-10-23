@@ -356,6 +356,102 @@ paths:
           description: Caller is neither the course owner nor an enrolled student.
         "404":
           description: Material is not part of the course.
+  /api/courses/{courseId}/schedules:
+    parameters:
+      - $ref: "#/components/parameters/CourseId"
+    get:
+      tags: [M1 Core]
+      summary: List schedules for an instructor-owned course
+      operationId: listCourseSchedules
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Course sessions ordered by date and start time, including cancelled sessions.
+        "403":
+          description: Caller is not the instructor who owns the course.
+        "404":
+          description: Course not found.
+    post:
+      tags: [M1 Core]
+      summary: Create a course session
+      operationId: createCourseSchedule
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduleInput"
+      responses:
+        "201":
+          description: Session created and students notified after the transaction commits.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [schedule]
+                properties:
+                  schedule:
+                    $ref: "#/components/schemas/Schedule"
+        "403":
+          description: Caller is not the instructor who owns the course.
+        "404":
+          description: Course not found.
+        "409":
+          description: Session overlaps an existing active session, or the course is archived.
+        "422":
+          description: Session date, time, or details are invalid.
+  /api/schedules/{scheduleId}:
+    parameters:
+      - $ref: "#/components/parameters/ScheduleId"
+    patch:
+      tags: [M1 Core]
+      summary: Update a course session
+      operationId: updateSchedule
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduleUpdate"
+      responses:
+        "200":
+          description: Session updated; date/time changes set status to RESCHEDULED.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [schedule]
+                properties:
+                  schedule:
+                    $ref: "#/components/schemas/Schedule"
+        "403":
+          description: Caller is not the instructor who owns the course.
+        "404":
+          description: Session not found.
+        "409":
+          description: Updated time overlaps another active session, or the course is archived.
+        "422":
+          description: Session date, time, or details are invalid.
+    delete:
+      tags: [M1 Core]
+      summary: Cancel a course session without deleting it
+      operationId: cancelSchedule
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Session status is CANCELLED and enrolled students are notified after commit.
+        "403":
+          description: Caller is not the instructor who owns the course.
+        "404":
+          description: Session not found.
+        "409":
+          description: The course is archived.
   /api/courses:
     get:
       tags: [M1 Core]
@@ -612,6 +708,13 @@ components:
       schema:
         type: integer
         minimum: 1
+    ScheduleId:
+      name: scheduleId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
   securitySchemes:
     bearerAuth:
       type: http
@@ -751,6 +854,80 @@ components:
         enrollmentKey:
           type: string
           pattern: "^[A-Za-z0-9]{6,8}$"
+    Schedule:
+      type: object
+      required: [id, courseId, title, date, startTime, endTime, roomOrLink, status]
+      properties:
+        id:
+          type: integer
+        courseId:
+          type: integer
+        title:
+          type: string
+          maxLength: 200
+        date:
+          type: string
+          format: date
+        startTime:
+          type: string
+          format: time
+        endTime:
+          type: string
+          format: time
+        roomOrLink:
+          type: string
+          maxLength: 255
+        status:
+          type: string
+          enum: [SCHEDULED, RESCHEDULED, CANCELLED]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ScheduleInput:
+      type: object
+      required: [title, date, startTime, endTime, roomOrLink]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        date:
+          type: string
+          format: date
+        startTime:
+          type: string
+          pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?$"
+        endTime:
+          type: string
+          pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?$"
+        roomOrLink:
+          type: string
+          minLength: 1
+          maxLength: 255
+    ScheduleUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        date:
+          type: string
+          format: date
+        startTime:
+          type: string
+          pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?$"
+        endTime:
+          type: string
+          pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?$"
+        roomOrLink:
+          type: string
+          minLength: 1
+          maxLength: 255
     AuthSession:
       type: object
       required: [accessToken, refreshToken, user]

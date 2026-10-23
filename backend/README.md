@@ -100,3 +100,11 @@ PR 0 provides the shared scaffold. PR 1 implements M1 authentication; course and
 - A file is removed immediately if its material row cannot be written. If immediate cleanup also fails, M1 logs and retries that known orphan through an `init(ctx)`-started job every 30 minutes. The retry queue is limited to failed M1 material writes so it never removes unrelated M2/M3 uploads from the shared storage root.
 - `GET /api/courses/:courseId/materials/:materialId/download` verifies the course/material association and checks course ownership or student enrollment before opening the storage stream. Responses use attachment disposition with the original filename.
 - Archived courses remain readable by authorized members, but lessons/materials cannot be added. No schema change was needed; the existing lessons/materials migration already contains all required columns.
+
+## M1 schedules (PR 5)
+
+- The owning instructor can list, create, edit, and cancel sessions through `/api/courses/:courseId/schedules` and `/api/schedules/:scheduleId`. Cancellation changes the existing row to `CANCELLED`; it does not delete it.
+- Dates must be valid `YYYY-MM-DD` values and times must satisfy `startTime < endTime`. Rescheduling marks the session `RESCHEDULED`; title/location-only edits preserve its current active status.
+- Schedule writes run in a transaction and lock the owning course row before checking same-day overlaps. This serializes concurrent schedule writes for a course; cancelled sessions do not block a new session.
+- After each committed create, update, or first cancellation, M1 resolves `notifications` with `{ optional: true }` and requests a `SCHEDULE_CHANGED` notification. The Port is optional until M3 provides it; notification failures are logged and do not undo a committed schedule change.
+- The existing M1 core migration already defines the `schedules` table, status enum, and `start_time < end_time` constraint, so this PR requires no migration.

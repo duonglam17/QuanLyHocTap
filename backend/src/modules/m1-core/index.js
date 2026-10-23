@@ -13,20 +13,24 @@ const CourseController = require('./controllers/courseController');
 const EnrollmentController = require('./controllers/enrollmentController');
 const UserController = require('./controllers/userController');
 const LessonController = require('./controllers/lessonController');
+const ScheduleController = require('./controllers/scheduleController');
 const AuthRepository = require('./repositories/authRepository');
 const CourseRepository = require('./repositories/courseRepository');
 const EnrollmentRepository = require('./repositories/enrollmentRepository');
 const UserRepository = require('./repositories/userRepository');
 const LessonRepository = require('./repositories/lessonRepository');
 const MaterialRepository = require('./repositories/materialRepository');
+const ScheduleRepository = require('./repositories/scheduleRepository');
 const { createCourseRouter } = require('./routes/courseRoutes');
 const { createAuthRouter } = require('./routes/authRoutes');
 const { createUserRouter } = require('./routes/userRoutes');
 const { createLessonRouter } = require('./routes/lessonRoutes');
+const { createScheduleRouter } = require('./routes/scheduleRoutes');
 const AuthService = require('./services/authService');
 const CourseService = require('./services/courseService');
 const UserService = require('./services/userService');
 const { LessonService } = require('./services/lessonService');
+const { ScheduleService } = require('./services/scheduleService');
 const {
   createCourseAccessPort,
   getPortAtRequestTime,
@@ -41,6 +45,10 @@ const lessonService = new LessonService({
   materialRepository: new MaterialRepository(),
   getPortFn: getPortAtRequestTime
 });
+const scheduleService = new ScheduleService({
+  scheduleRepository: new ScheduleRepository(),
+  getPortFn: getPortAtRequestTime
+});
 const courseRepository = new CourseRepository();
 const courseService = new CourseService({
   courseRepository,
@@ -52,6 +60,10 @@ const enrollmentController = new EnrollmentController(courseService);
 router.use('/auth', createAuthRouter({ authController: new AuthController(authService) }));
 router.use('/users', createUserRouter({ userController: new UserController(userService) }));
 router.use('/', createLessonRouter({ lessonController: new LessonController(lessonService) }));
+router.use(
+  '/',
+  createScheduleRouter({ scheduleController: new ScheduleController(scheduleService) })
+);
 router.use('/courses', createCourseRouter({ courseController, enrollmentController }));
 
 // Route kiểm tra hoạt động của module M1: GET /api/m1-core/ping
@@ -63,8 +75,6 @@ router.get('/ping', (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
-
-// router.use('/schedules', scheduleRoutes);
 
 module.exports = {
   router,
