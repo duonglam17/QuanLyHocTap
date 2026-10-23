@@ -361,15 +361,25 @@ paths:
       - $ref: "#/components/parameters/CourseId"
     get:
       tags: [M1 Core]
-      summary: List schedules for an instructor-owned course
+      summary: List schedules for a course owner or enrolled student
       operationId: listCourseSchedules
       security:
         - bearerAuth: []
       responses:
         "200":
-          description: Course sessions ordered by date and start time, including cancelled sessions.
+          description: Active course sessions ordered by date and start time.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [schedules]
+                properties:
+                  schedules:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Schedule"
         "403":
-          description: Caller is not the instructor who owns the course.
+          description: Caller is neither the course owner nor an enrolled student.
         "404":
           description: Course not found.
     post:
@@ -403,6 +413,60 @@ paths:
           description: Session overlaps an existing active session, or the course is archived.
         "422":
           description: Session date, time, or details are invalid.
+  /api/me/schedule:
+    get:
+      tags: [M1 Core]
+      summary: View the authenticated student's combined timetable
+      operationId: listMySchedule
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Paginated active sessions across every course the student is enrolled in.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, page, limit]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: "#/components/schemas/Schedule"
+                        - type: object
+                          required: [courseCode, courseTitle]
+                          properties:
+                            courseCode:
+                              type: string
+                            courseTitle:
+                              type: string
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  limit:
+                    type: integer
+        "401":
+          description: Authentication is required.
+        "403":
+          description: Only students can view the combined timetable.
+        "422":
+          description: Pagination parameters are invalid.
   /api/schedules/{scheduleId}:
     parameters:
       - $ref: "#/components/parameters/ScheduleId"

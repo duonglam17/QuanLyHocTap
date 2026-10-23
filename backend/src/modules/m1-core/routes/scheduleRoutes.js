@@ -35,13 +35,25 @@ function createScheduleRouter({ scheduleController } = {}) {
       })
       .refine((body) => Object.keys(body).length > 0)
   });
+  const paginationSchema = z.object({
+    query: z.object({
+      page: z.coerce.number().int().min(1).default(1),
+      limit: z.coerce.number().int().min(1).max(100).default(20)
+    })
+  });
 
   router.get(
     '/courses/:courseId/schedules',
     requireAuth,
-    requireRole('GIANG_VIEN'),
     validate(z.object({ params: courseParams })),
     scheduleController.listForCourse.bind(scheduleController)
+  );
+  router.get(
+    '/me/schedule',
+    requireAuth,
+    requireRole('SINH_VIEN'),
+    validate(paginationSchema),
+    scheduleController.listForStudent.bind(scheduleController)
   );
   router.post(
     '/courses/:courseId/schedules',
