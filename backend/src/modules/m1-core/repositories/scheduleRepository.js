@@ -134,11 +134,49 @@ class ScheduleRepository {
     const [rows] = await this.db.query(
       `SELECT ${scheduleColumns}
        FROM schedules
-       WHERE course_id = ?
+       WHERE course_id = ? AND status <> 'CANCELLED'
        ORDER BY date ASC, start_time ASC, id ASC`,
       [courseId]
     );
     return rows.map(normalizeSchedule);
+  }
+
+  async listForStudent(userId, { page = 1, limit = 20 } = {}) {
+    const offset = (page - 1) * limit;
+    const [[countRows], [rows]] = await Promise.all([
+      this.db.query(
+        `SELECT COUNT(*) AS total
+         FROM schedules s
+         JOIN enrollments e ON e.course_id = s.course_id
+         JOIN courses c ON c.id = s.course_id
+         WHERE e.student_id = ?
+           AND c.deleted_at IS NULL
+           AND s.status <> 'CANCELLED'`,
+        [userId]
+      ),
+      this.db.query(
+        `SELECT s.id, s.course_id AS courseId, c.code AS courseCode,
+                c.title AS courseTitle, s.title,
+                DATE_FORMAT(s.date, '%Y-%m-%d') AS date,
+                TIME_FORMAT(s.start_time, '%H:%i:%s') AS startTime,
+                TIME_FORMAT(s.end_time, '%H:%i:%s') AS endTime,
+                s.room_or_link AS roomOrLink, s.status,
+                s.created_at AS createdAt, s.updated_at AS updatedAt
+         FROM schedules s
+         JOIN enrollments e ON e.course_id = s.course_id
+         JOIN courses c ON c.id = s.course_id
+         WHERE e.student_id = ?
+           AND c.deleted_at IS NULL
+           AND s.status <> 'CANCELLED'
+         ORDER BY s.date ASC, s.start_time ASC, s.course_id ASC, s.id ASC
+         LIMIT ? OFFSET ?`,
+        [userId, limit, offset]
+      )
+    ]);
+    return {
+      items: rows.map(normalizeSchedule),
+      total: Number(countRows[0]?.total || 0)
+    };
   }
 }
 

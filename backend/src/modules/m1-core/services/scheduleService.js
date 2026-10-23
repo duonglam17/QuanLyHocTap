@@ -4,10 +4,7 @@ const {
   NotFoundError,
   ValidationError
 } = require('../../../common/errors');
-const {
-  logger: defaultLogger,
-  withTransaction: defaultTransaction
-} = require('../../../common');
+const { logger: defaultLogger, withTransaction: defaultTransaction } = require('../../../common');
 const { getPort: defaultGetPort } = require('../../../contracts');
 const sanitizeText = require('../../../common/sanitizeText');
 
@@ -168,8 +165,35 @@ class ScheduleService {
 
   async listForCourse(courseId, user) {
     const id = this._validateId(courseId, 'Mã khóa học');
-    await this._assertOwner(id, user.id);
+    const port = this.getPort('courseAccess');
+    const course = await port.getCourse(id);
+    if (!course) {
+      throw new NotFoundError('Không tìm thấy khóa học');
+    }
+    const isOwner = await port.isOwner(user.id, id);
+    const isEnrolled = user.role === 'SINH_VIEN' && (await port.isEnrolled(user.id, id));
+    if (!isOwner && !isEnrolled) {
+      throw new ForbiddenError(
+        'Bạn cần là chủ khóa học hoặc ghi danh để xem thời khóa biểu chi tiết'
+      );
+    }
     return this.scheduleRepository.listByCourse(id);
+  }
+
+  async listStudentSchedule(user, pagination = {}) {
+    if (user.role !== 'SINH_VIEN') {
+      throw new ForbiddenError('Chỉ sinh viên đã ghi danh mới được xem thời khóa biểu tổng hợp');
+    }
+    const page = Number(pagination.page ?? 1);
+    const limit = Number(pagination.limit ?? 20);
+    if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger((page - 1) * limit)) {
+      throw new ValidationError('Số trang phải là số nguyên dương');
+    }
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+      throw new ValidationError('Kích thước trang phải từ 1 đến 100');
+    }
+    const result = await this.scheduleRepository.listForStudent(Number(user.id), { page, limit });
+    return { ...result, page, limit };
   }
 
   async createSchedule(courseId, user, input) {

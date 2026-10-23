@@ -65,7 +65,18 @@ function createScheduleHarness({
       return schedule;
     },
     async listByCourse(courseId) {
-      return state.schedules.filter((schedule) => schedule.courseId === Number(courseId));
+      return state.schedules.filter(
+        (schedule) => schedule.courseId === Number(courseId) && schedule.status !== 'CANCELLED'
+      );
+    },
+    async listForStudent(userId, pagination) {
+      state.studentScheduleRequest = { userId, pagination };
+      const items = state.schedules.filter(
+        (schedule) =>
+          schedule.studentIds?.includes(Number(userId)) && schedule.status !== 'CANCELLED'
+      );
+      const offset = (pagination.page - 1) * pagination.limit;
+      return { items: items.slice(offset, offset + pagination.limit), total: items.length };
     }
   };
   const courseAccess = {
@@ -74,6 +85,9 @@ function createScheduleHarness({
     },
     async isOwner(userId, courseId) {
       return Number(userId) === course.ownerId && Number(courseId) === course.id;
+    },
+    async isEnrolled(userId, courseId) {
+      return Number(userId) === 33 && Number(courseId) === course.id;
     }
   };
   const notifications = {
@@ -273,6 +287,53 @@ test('US-17 enforces ownership and treats the notifications Port as optional', a
   assert.deepEqual(state.notifications, []);
 });
 
+test('US-18 permits only the course owner or an enrolled student to view course schedules', async () => {
+  const schedules = [
+    { id: 4, courseId: 7, status: 'SCHEDULED' },
+    { id: 5, courseId: 7, status: 'CANCELLED' }
+  ];
+  const { service } = createScheduleHarness({ schedules });
+
+  assert.deepEqual(await service.listForCourse(7, owner), [schedules[0]]);
+  assert.deepEqual(await service.listForCourse(7, { id: 33, role: 'SINH_VIEN' }), [schedules[0]]);
+  await assert.rejects(service.listForCourse(7, { id: 34, role: 'SINH_VIEN' }), ForbiddenError);
+  await assert.rejects(service.listForCourse(7, { id: 1, role: 'ADMIN' }), ForbiddenError);
+});
+
+test('US-18 aggregates a student timetable across enrolled courses with pagination', async () => {
+  const schedules = Array.from({ length: 5 }, (_, index) => ({
+    id: index + 1,
+    courseId: index < 3 ? 7 : 8,
+    studentIds: [33],
+    status: 'SCHEDULED'
+  }));
+  const { state, service } = createScheduleHarness({ schedules });
+
+  const result = await service.listStudentSchedule(
+    { id: 33, role: 'SINH_VIEN' },
+    { page: '2', limit: '2' }
+  );
+
+  assert.deepEqual(result, { items: schedules.slice(2, 4), total: 5, page: 2, limit: 2 });
+  assert.deepEqual(state.studentScheduleRequest, { userId: 33, pagination: { page: 2, limit: 2 } });
+  await assert.rejects(service.listStudentSchedule(owner), ForbiddenError);
+  await assert.rejects(
+    service.listStudentSchedule({ id: 33, role: 'SINH_VIEN' }, { page: 0, limit: 20 }),
+    ValidationError
+  );
+  await assert.rejects(
+    service.listStudentSchedule({ id: 33, role: 'SINH_VIEN' }, { page: 1, limit: 101 }),
+    ValidationError
+  );
+  await assert.rejects(
+    service.listStudentSchedule(
+      { id: 33, role: 'SINH_VIEN' },
+      { page: Number.MAX_SAFE_INTEGER, limit: 100 }
+    ),
+    ValidationError
+  );
+});
+
 test('schedule repository locks the course row and uses a parameterized overlap query', async () => {
   const queries = [];
   const connection = {
@@ -308,6 +369,50 @@ test('schedule repository locks the course row and uses a parameterized overlap 
   assert.deepEqual(queries[1].parameters, [7, '2026-11-10', '10:00:00', '09:00:00', 4]);
 });
 
+test('schedule repository pages the enrolled students schedule across courses', async () => {
+  const queries = [];
+  const repository = new ScheduleRepository({
+    async query(sql, parameters) {
+      queries.push({ sql, parameters });
+      if (sql.includes('COUNT(*)')) {
+        return [[{ total: 3 }], []];
+      }
+      return [
+        [
+          {
+            id: 9,
+            courseId: 8,
+            courseCode: 'CS102',
+            courseTitle: 'Second course',
+            title: 'Lesson',
+            date: '2026-11-11',
+            startTime: '09:00:00',
+            endTime: '10:00:00',
+            roomOrLink: 'Room 2',
+            status: 'SCHEDULED'
+          }
+        ],
+        []
+      ];
+    }
+  });
+
+  const result = await repository.listForStudent(33, { page: 2, limit: 1 });
+
+  assert.equal(result.total, 3);
+  assert.equal(result.items[0].id, 9);
+  assert.equal(result.items[0].courseId, 8);
+  assert.equal(result.items[0].courseCode, 'CS102');
+  assert.match(queries[0].sql, /JOIN enrollments e ON e\.course_id = s\.course_id/);
+  assert.match(queries[1].sql, /e\.student_id = \?/);
+  assert.match(queries[1].sql, /s\.status <> 'CANCELLED'/);
+  assert.match(queries[1].sql, /LIMIT \? OFFSET \?/);
+  assert.deepEqual(
+    queries.map((query) => query.parameters),
+    [[33], [33, 1, 1]]
+  );
+});
+
 test('schedule routes require an authenticated instructor and validate create input', async () => {
   const calls = [];
   const schedule = { id: 10, courseId: 7, status: 'SCHEDULED' };
@@ -315,6 +420,10 @@ test('schedule routes require an authenticated instructor and validate create in
     async listForCourse(courseId, user) {
       calls.push(['list', courseId, user.id]);
       return [schedule];
+    },
+    async listStudentSchedule(user, pagination) {
+      calls.push(['student-list', user.id, pagination]);
+      return { items: [schedule], total: 1, page: pagination.page, limit: pagination.limit };
     },
     async createSchedule(courseId, user, input) {
       calls.push(['create', courseId, user.id, input]);
@@ -366,6 +475,30 @@ test('schedule routes require an authenticated instructor and validate create in
       .send(validSchedule);
     assert.equal(created.status, 201);
     assert.deepEqual(calls[0], ['create', '7', 12, validSchedule]);
+
+    const studentSchedule = await request(app)
+      .get('/api/me/schedule?page=2&limit=5')
+      .set('Authorization', `Bearer ${studentToken}`);
+    assert.equal(studentSchedule.status, 200);
+    assert.deepEqual(studentSchedule.body, {
+      items: [schedule],
+      total: 1,
+      page: 2,
+      limit: 5
+    });
+    assert.deepEqual(calls[1], ['student-list', 33, { page: 2, limit: 5 }]);
+
+    const courseSchedule = await request(app)
+      .get('/api/courses/7/schedules')
+      .set('Authorization', `Bearer ${studentToken}`);
+    assert.equal(courseSchedule.status, 200);
+    assert.deepEqual(courseSchedule.body, { schedules: [schedule] });
+    assert.deepEqual(calls[2], ['list', '7', 33]);
+
+    const invalidPagination = await request(app)
+      .get('/api/me/schedule?page=0')
+      .set('Authorization', `Bearer ${studentToken}`);
+    assert.equal(invalidPagination.status, 422);
   } finally {
     db.query = originalQuery;
   }

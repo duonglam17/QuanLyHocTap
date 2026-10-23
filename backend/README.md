@@ -108,3 +108,9 @@ PR 0 provides the shared scaffold. PR 1 implements M1 authentication; course and
 - Schedule writes run in a transaction and lock the owning course row before checking same-day overlaps. This serializes concurrent schedule writes for a course; cancelled sessions do not block a new session.
 - After each committed create, update, or first cancellation, M1 resolves `notifications` with `{ optional: true }` and requests a `SCHEDULE_CHANGED` notification. The Port is optional until M3 provides it; notification failures are logged and do not undo a committed schedule change.
 - The existing M1 core migration already defines the `schedules` table, status enum, and `start_time < end_time` constraint, so this PR requires no migration.
+
+## M1 timetable viewing (PR 6)
+
+- `GET /api/courses/:courseId/schedules` is available only to the course owner and students enrolled in that course; an un-enrolled student or unrelated caller is forbidden.
+- `GET /api/me/schedule?page=1&limit=20` returns a date/time-ordered, paginated timetable across the authenticated student's enrolled courses. The page size is limited to 100.
+- Cancelled sessions are excluded from course and combined timetable views. The combined query scopes both its count and returned rows to the student's enrollment records; no cross-module tables or schema changes are needed.
