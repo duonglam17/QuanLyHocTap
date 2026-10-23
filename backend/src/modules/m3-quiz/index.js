@@ -21,6 +21,9 @@ const createQuizResultsRepository = require('./repositories/quizResultsRepositor
 const createAnnouncementRepository = require('./repositories/announcementRepository');
 const { createAnnouncementService } = require('./services/announcementService');
 const createAnnouncementRoutes = require('./routes/announcementRoutes');
+const createDiscussionRepository = require('./repositories/discussionRepository');
+const { createDiscussionService } = require('./services/discussionService');
+const createDiscussionRoutes = require('./routes/discussionRoutes');
 const cron = require('node-cron');
 
 const router = Router();
@@ -29,6 +32,7 @@ let quizService;
 let attemptService;
 let autoSubmitTask;
 let announcementService;
+let discussionService;
 
 const notificationsPort = {
   notifyUser(...args) {
@@ -92,6 +96,17 @@ router.use(createAnnouncementRoutes({
   },
   delete(...args) {
     return announcementService.delete(...args);
+  }
+}));
+router.use(createDiscussionRoutes({
+  create(...args) {
+    return discussionService.create(...args);
+  },
+  reply(...args) {
+    return discussionService.reply(...args);
+  },
+  list(...args) {
+    return discussionService.list(...args);
   }
 }));
 
@@ -161,6 +176,14 @@ function init(ctx) {
     withTransaction: ctx.common.withTransaction,
     sanitizeText: ctx.common.sanitizeText,
     logger: ctx.logger
+  });
+
+  const discussionRepository = createDiscussionRepository(ctx.db);
+  discussionService = createDiscussionService({
+    repository: discussionRepository,
+    getCourseAccess: () => ctx.contracts.getPort('courseAccess', { optional: true }),
+    withTransaction: ctx.common.withTransaction,
+    sanitizeText: ctx.common.sanitizeText
   });
 }
 
