@@ -8,6 +8,7 @@ servers:
 tags:
   - name: M3 Quiz
   - name: M3 Notifications
+  - name: M3 Discussions
 paths:
   /api/notifications:
     get:
@@ -544,6 +545,129 @@ paths:
           description: Announcement or course does not exist
         '409':
           description: Course is archived and read-only
+  /api/lessons/{lessonId}/comments:
+    get:
+      tags:
+        - M3 Discussions
+      summary: List paginated discussion threads for a lesson
+      operationId: listLessonDiscussions
+      security:
+        - bearerAuth: []
+      x-user-story: US-16
+      parameters:
+        - name: lessonId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[1-9]\d*$'
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Paginated root discussions with their replies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiscussionPage'
+        '401':
+          description: Authentication is required
+        '403':
+          description: Caller is not enrolled in or owner of the course
+        '404':
+          description: Lesson or course does not exist
+    post:
+      tags:
+        - M3 Discussions
+      summary: Create a discussion comment under a lesson
+      operationId: createLessonDiscussion
+      security:
+        - bearerAuth: []
+      x-user-story: US-16
+      x-allowed-roles:
+        - SINH_VIEN
+        - GIANG_VIEN
+      parameters:
+        - name: lessonId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[1-9]\d*$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiscussionContentRequest'
+      responses:
+        '201':
+          description: Discussion created with sanitized content
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Discussion'
+        '401':
+          description: Authentication is required
+        '403':
+          description: Caller is not enrolled in or owner of the course
+        '404':
+          description: Lesson or course does not exist
+        '422':
+          description: Content is empty or invalid
+  /api/comments/{commentId}/replies:
+    post:
+      tags:
+        - M3 Discussions
+      summary: Reply to a discussion comment
+      operationId: replyToDiscussion
+      security:
+        - bearerAuth: []
+      x-user-story: US-16
+      x-allowed-roles:
+        - SINH_VIEN
+        - GIANG_VIEN
+      parameters:
+        - name: commentId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[1-9]\d*$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiscussionContentRequest'
+      responses:
+        '201':
+          description: Reply created in the comment's root discussion thread
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Discussion'
+        '401':
+          description: Authentication is required
+        '403':
+          description: Caller is not enrolled in or owner of the course
+        '404':
+          description: Comment, lesson, or course does not exist
+        '422':
+          description: Content is empty or invalid
 components:
   securitySchemes:
     bearerAuth:
@@ -995,6 +1119,95 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Announcement'
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+    DiscussionContentRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          minLength: 1
+    Discussion:
+      type: object
+      required:
+        - id
+        - courseId
+        - lessonId
+        - authorId
+        - author
+        - content
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        courseId:
+          type: integer
+          format: int64
+        lessonId:
+          type: integer
+          format: int64
+        parentDiscussionId:
+          type: integer
+          format: int64
+          nullable: true
+        authorId:
+          type: integer
+          format: int64
+        author:
+          $ref: '#/components/schemas/DiscussionAuthor'
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        replies:
+          type: array
+          items:
+            $ref: '#/components/schemas/Discussion'
+    DiscussionAuthor:
+      type: object
+      required:
+        - id
+        - username
+        - fullName
+        - role
+      properties:
+        id:
+          type: integer
+          format: int64
+        username:
+          type: string
+        fullName:
+          type: string
+        role:
+          type: string
+          enum:
+            - ADMIN
+            - GIANG_VIEN
+            - SINH_VIEN
+    DiscussionPage:
+      type: object
+      required:
+        - items
+        - page
+        - limit
+        - total
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Discussion'
         page:
           type: integer
         limit:
