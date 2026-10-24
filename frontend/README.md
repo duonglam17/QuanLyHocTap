@@ -42,7 +42,10 @@ Chạy từ `frontend/`:
 npm run lint
 npm test
 npm run build
+npm run deps:check
 ```
+
+CI frontend chạy bốn lệnh trên khi có thay đổi trong `frontend/`.
 
 ## Thành phần và thư viện giao diện
 
