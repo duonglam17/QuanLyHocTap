@@ -1,7 +1,10 @@
 const errorKinds = new Map([
+  [400, 'bad-request'],
   [401, 'unauthorized'],
   [403, 'forbidden'],
   [404, 'not-found'],
+  [413, 'payload-too-large'],
+  [429, 'rate-limit'],
   [422, 'validation'],
   [500, 'server'],
   [502, 'server'],
