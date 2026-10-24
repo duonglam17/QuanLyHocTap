@@ -1,8 +1,9 @@
 # Shared UI Components
 
-- `atoms/`: thành phần cơ bản theo quy ước shadcn/ui và Tailwind.
-- `molecules/`: nhóm các thành phần nhỏ, ví dụ thông báo trạng thái.
-- `organisms/`: trạng thái tải, lỗi và rỗng có thể tái sử dụng.
+- `atoms/`: primitives có kiểu dáng shadcn/ui và Tailwind; tương tác phức tạp dùng Radix UI.
+- `molecules/`: trường biểu mẫu, tìm kiếm, phân trang, trạng thái và tải tệp.
+- `organisms/`: DataState, bảng dữ liệu và form dialog.
 - `templates/`: khung bố cục trang dùng chung.
 
-Design token ngữ nghĩa được khai báo trong `styles/globals.css` và Tailwind config.
+Token ngữ nghĩa được khai báo trong `styles/globals.css`, Tailwind config và `docs/design-system.md`.
+Import từ `@/shared/components` hoặc module con tương ứng; không tạo biến thể màu tùy ý trong module.

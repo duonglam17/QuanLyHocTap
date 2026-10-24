@@ -1,5 +1,8 @@
 import { useCallback, useState } from 'react';
 
+export { useApiQuery } from './useApiQuery.js';
+export { useApiMutation } from './useApiMutation.js';
+
 export function useApiState() {
   const [state, setState] = useState({ status: 'idle', data: null, error: null });
 
