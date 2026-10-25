@@ -90,21 +90,16 @@
 
 | Thuộc tính | Đặc tả |
 |---|---|
-| Route / vị trí | Kết quả hiển thị ngay sau submit trong luồng phòng thi. Route xem lại sau reload đã chốt là `/attempts/:attemptId/results`, hoãn sang C4b. |
-| Vai trò | `SINH_VIEN`, chỉ kết quả của lượt thi của mình. |
-| API | `POST /api/attempts/{attemptId}/submit` trả `AttemptSubmissionResult`: `attemptId`, `status` (`SUBMITTED` hoặc `AUTO_SUBMITTED`), `submittedAt`, `score`, `visibleToStudent`. |
-| Ba trạng thái | **Loading:** submit/đang lấy kết quả. **Error:** lỗi server, có thể thử lại submit do tính lặp an toàn. **Empty:** chưa có kết quả/lượt thi. **Success:** hiển thị điểm nếu `visibleToStudent` true; nếu false hoặc `score` null, hiển thị “Điểm sẽ được công bố sau” và trạng thái đã nộp. |
-| Hành động chính | Xem kết quả sau nộp; nếu submit lặp thì hiển thị kết quả cũ. |
-| Component | Shared: `DataState`, `StatusBadge`, `Button`; tiện ích `formatScore` từ shared lib theo frontend contract. Riêng M3: `AttemptResultPanel`. |
-| Slot | Route M3 riêng sau phòng thi. |
-| Giới hạn API | Hiện chỉ có POST submit; chưa có GET kết quả/lượt thi hoặc API xem lại câu trả lời. Sau reload chưa thể tải kết quả. Không hiển thị đáp án đúng. |
+| Route / vị trí | Kết quả ngay sau submit trong luồng phòng thi; xem lại qua `/attempts/:attemptId/results`. |
+| Vai trò | `SINH_VIEN` xem lượt thi của mình; `GIANG_VIEN` xem theo quyền máy chủ. |
+| API | `POST /api/attempts/{attemptId}/submit` trả kết quả ngay sau nộp; `GET /api/attempts/{attemptId}/result` tải lại kết quả. |
+| Ba trạng thái | **Loading:** đang tải kết quả. **Error:** lỗi tải, có thể thử lại; 403/404 chuyển tới trang ứng dụng tương ứng. **Empty:** chưa có dữ liệu kết quả. **Success:** `IN_PROGRESS` quay về phòng thi; `SUBMITTED`/`AUTO_SUBMITTED` hiển thị trạng thái và thời điểm nộp; chỉ hiện điểm và số câu đúng khi `visibleToStudent` true. Điểm null hiển thị “Chưa có”, không đổi thành 0. |
+| Hành động chính | Màn hình sau submit dẫn tới trang xem lại kết quả. Liên kết từ danh sách đề đang chờ API cung cấp `attemptId`. |
+| Component | Shared: `EmptyState`, `ErrorState`, `Skeleton`, `StatusBadge`; tiện ích `formatScore`, `formatDateTime`. Riêng M3: `ResultPage`. |
+| Slot | Route M3 riêng, layout `default`, không có nav. |
+| Giới hạn API | Không có API xem lại câu trả lời; tuyệt đối không hiển thị nội dung câu hỏi hoặc đáp án đúng. |
 
-### Hoãn sang C4b — xem lại kết quả sau khi tải lại
-
-- Route đã chốt: `/attempts/:attemptId/results`.
-- API dự kiến: `GET /api/attempts/{attemptId}/result`. Chỉ triển khai route và gọi API sau khi backend M3 bổ sung endpoint; không suy diễn schema trước khi OpenAPI được cập nhật.
-- Các trạng thái cần hỗ trợ: đang làm, đã nộp, chưa công bố điểm, đã công bố điểm và không có quyền.
-- Phần C4 hiện tại chỉ hiển thị kết quả ngay sau submit từ `AttemptSubmissionResult`; không thêm route hoặc API xem lại trong bước này.
+**Phụ thuộc nối từ danh sách đề:** `QuizStudentListItem` hiện có quiz `id` và `attemptStatus`, nhưng chưa có `attemptId`. Route kết quả cần `attemptId`; vì vậy chưa thể tạo liên kết an toàn từ danh sách cho đến khi backend bổ sung trường đó vào API danh sách đề và cập nhật OpenAPI. Không dùng `quizId` thay cho `attemptId`. |
 
 ## 7. Bảng tin khóa học
 

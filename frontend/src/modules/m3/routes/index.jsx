@@ -1,8 +1,16 @@
 import { M3PlaceholderPage } from '../pages/M3PlaceholderPage.jsx';
 import { NotificationsPage } from '../pages/NotificationsPage.jsx';
 import { QuizRoomPage } from '../pages/QuizRoomPage.jsx';
+import { ResultPage } from '../pages/ResultPage.jsx';
 
 export const routes = [
+  {
+    path: '/attempts/:attemptId/results',
+    roles: ['SINH_VIEN', 'GIANG_VIEN'],
+    layout: 'default',
+    public: false,
+    element: <ResultPage />
+  },
   {
     path: '/quizzes/:quizId/take',
     roles: ['SINH_VIEN'],
