@@ -7,8 +7,15 @@ export function HomeRedirect({ routes }) {
   if (status === 'loading') return <LoadingState />;
   if (!user) return <Navigate to="/login" replace />;
 
-  const destination = routes.find(
+  const accessibleRoutes = routes.filter(
     (route) => !route.public && (!route.roles.length || route.roles.includes(user.role))
   );
+  const destination =
+    accessibleRoutes.find((route) => route.homeFor?.includes(user.role)) ??
+    accessibleRoutes
+      .filter((route) => typeof route.nav?.order === 'number')
+      .sort((left, right) => left.nav.order - right.nav.order)[0] ??
+    accessibleRoutes[0];
+
   return <Navigate to={destination?.path ?? '/forbidden'} replace />;
 }
