@@ -17,6 +17,7 @@ const statusLabels = {
     ARCHIVED: ['Đã lưu trữ', 'outline']
   },
   submission: {
+    NOT_SUBMITTED: ['Chưa nộp', 'secondary'],
     SUBMITTED: ['Đã nộp', 'success'],
     SUBMITTED_LATE: ['Nộp trễ', 'warning'],
     GRADED: ['Đã chấm', 'default'],

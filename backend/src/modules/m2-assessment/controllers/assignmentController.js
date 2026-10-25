@@ -67,12 +67,45 @@ class AssignmentController {
   getCourseAssignments = async (req, res, next) => {
     try {
       const { courseId } = req.params;
-      const assignments = await this.assignmentService.getAssignmentsByCourseId(courseId);
+      const assignments = await this.assignmentService.getAssignmentsByCourseId(
+        courseId,
+        req.user
+      );
 
       return res.status(200).json({
         success: true,
         count: assignments.length,
         data: assignments.map((a) => (a.toJSON ? a.toJSON() : a))
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  updateAssignment = async (req, res, next) => {
+    try {
+      const body = req.body;
+      const changes = {};
+      const fields = [
+        ['title', 'title'],
+        ['description', 'description'],
+        ['due_date', 'dueDate'],
+        ['max_score', 'maxScore'],
+        ['allow_late_submission', 'allowLateSubmission']
+      ];
+      fields.forEach(([apiField, serviceField]) => {
+        if (Object.hasOwn(body, apiField)) changes[serviceField] = body[apiField];
+      });
+      const updated = await this.assignmentService.updateAssignment(
+        req.params.id,
+        req.user ? req.user.id : null,
+        changes
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: 'Cập nhật bài tập thành công.',
+        data: updated.toJSON ? updated.toJSON() : updated
       });
     } catch (err) {
       next(err);
