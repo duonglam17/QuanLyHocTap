@@ -34,7 +34,9 @@ function createQuiz(overrides = {}) {
 function createFixture({
   courseStatus = 'PUBLISHED',
   quiz = createQuiz(),
-  attempts = false
+  attempts = false,
+  enrolledStudentIds = [3],
+  studentAttempts = {}
 } = {}) {
   const calls = [];
   const connection = { transaction: true };
@@ -74,13 +76,15 @@ function createFixture({
     },
     async listStudentQuizzes(courseId, studentId, options) {
       calls.push({ operation: 'listStudentQuizzes', courseId, studentId, options });
+      const attempt = studentAttempts[studentId] ?? null;
       return {
         items: [
           {
             ...storedQuiz,
-            attemptStatus: null,
-            canStart: true,
-            score: null
+            attemptId: attempt?.id ?? null,
+            attemptStatus: attempt?.status ?? null,
+            canStart: attempt == null,
+            score: attempt?.score ?? null
           }
         ],
         total: 1
@@ -106,7 +110,7 @@ function createFixture({
   };
   const courseAccess = createCourseAccessFake({
     courses: [{ id: 1, ownerId: 2, title: 'Course', status: courseStatus }],
-    enrolledStudentIds: [3]
+    enrolledStudentIds
   });
   const service = createQuizService({
     repository,
@@ -188,6 +192,7 @@ test('student listing exposes only published quiz state and omits a hidden score
     );
 
     assert.equal(response.status, 200);
+    assert.equal(response.body.items[0].attemptId, null);
     assert.equal(response.body.items[0].attemptStatus, 'NOT_STARTED');
     assert.equal(response.body.items[0].canStart, true);
     assert.equal(response.body.items[0].visibleToStudent, false);
@@ -200,6 +205,51 @@ test('student listing exposes only published quiz state and omits a hidden score
     assert.equal(fixture.calls[0].operation, 'listStudentQuizzes');
     assert.equal(fixture.calls[0].studentId, 3);
     assert.equal(fixture.calls[0].options.now, serverNow);
+  });
+});
+
+test('student listing returns only the authenticated student attempt id and status', async () => {
+  const attemptStates = [
+    { id: 501, status: 'IN_PROGRESS' },
+    { id: 502, status: 'SUBMITTED', score: '8.50' },
+    { id: 503, status: 'AUTO_SUBMITTED', score: '7.00' }
+  ];
+
+  for (const attempt of attemptStates) {
+    const fixture = createFixture({ studentAttempts: { 3: attempt } });
+    const app = createApp(fixture.service);
+    await withAuthenticatedDatabase(async () => {
+      const response = await authenticatedRequest(app, 'get', '/courses/1/quizzes', 3, 'SINH_VIEN');
+      assert.equal(response.status, 200);
+      assert.equal(response.body.items[0].attemptId, attempt.id);
+      assert.equal(response.body.items[0].attemptStatus, attempt.status);
+      assert.equal(response.body.items[0].canStart, false);
+    });
+  }
+
+  const fixture = createFixture({
+    enrolledStudentIds: [3, 4],
+    studentAttempts: {
+      3: { id: 601, status: 'SUBMITTED', score: '9.00' },
+      4: null
+    }
+  });
+  const app = createApp(fixture.service);
+  await withAuthenticatedDatabase(async () => {
+    const studentA = await authenticatedRequest(app, 'get', '/courses/1/quizzes', 3, 'SINH_VIEN');
+    const studentB = await authenticatedRequest(app, 'get', '/courses/1/quizzes', 4, 'SINH_VIEN');
+
+    assert.equal(studentA.status, 200);
+    assert.equal(studentA.body.items[0].attemptId, 601);
+    assert.equal(studentB.status, 200);
+    assert.equal(studentB.body.items[0].attemptId, null);
+    assert.equal(JSON.stringify(studentB.body).includes('601'), false);
+    for (const response of [studentA, studentB]) {
+      const serialized = JSON.stringify(response.body).toLowerCase();
+      for (const forbiddenKey of ['iscorrect', 'is_correct', 'correct']) {
+        assert.equal(serialized.includes(forbiddenKey), false);
+      }
+    }
   });
 });
 
@@ -471,6 +521,8 @@ test('quiz repository lists use bounded aggregate queries and a single joined qu
   assert.equal(studentPage.total, 2);
   assert.equal(queries.length, 2);
   assert.match(queries[0].sql, /a\.student_id = \?/);
+  assert.match(queries[0].sql, /a\.id AS attemptId/);
+  assert.match(queries[0].sql, /LEFT JOIN attempts a ON a\.quiz_id = q\.id AND a\.student_id = \?/);
   assert.match(queries[0].sql, /q\.status IN \('PUBLISHED', 'CLOSED'\)/);
   assert.deepEqual(queries[0].values.slice(3), [3, 1, 20, 0]);
 
