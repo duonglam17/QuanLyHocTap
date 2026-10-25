@@ -6,7 +6,13 @@ import { LoginPage } from './LoginPage.jsx';
 
 function Destination() {
   const location = useLocation();
-  return <p>Đã tới {location.pathname}{location.search}{location.hash}</p>;
+  return (
+    <p>
+      Đã tới {location.pathname}
+      {location.search}
+      {location.hash}
+    </p>
+  );
 }
 
 describe('LoginPage', () => {
@@ -18,13 +24,19 @@ describe('LoginPage', () => {
           initialEntries={[
             {
               pathname: '/login',
-              state: { from: { pathname: '/m2/assignments/4', search: '?tab=details', hash: '#submission' } }
+              state: {
+                from: {
+                  pathname: '/protected/items/4',
+                  search: '?tab=details',
+                  hash: '#submission'
+                }
+              }
             }
           ]}
         >
           <Routes>
             <Route element={<LoginPage />} path="/login" />
-            <Route element={<Destination />} path="/m2/assignments/4" />
+            <Route element={<Destination />} path="/protected/items/4" />
           </Routes>
         </MemoryRouter>
       </AuthContext.Provider>
@@ -38,7 +50,11 @@ describe('LoginPage', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Đăng nhập' }));
 
-    await waitFor(() => expect(screen.getByText('Đã tới /m2/assignments/4?tab=details#submission')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.getByText('Đã tới /protected/items/4?tab=details#submission')
+      ).toBeInTheDocument()
+    );
     expect(login).toHaveBeenCalledWith('sv_nam', 'MatKhau@123');
   });
 

@@ -8,13 +8,19 @@ describe('module route discovery', () => {
     expect(new Set(moduleRoutes.map((route) => route.path)).size).toBe(moduleRoutes.length);
     expect(moduleRoutes.every((route) => route.public || Array.isArray(route.roles))).toBe(true);
     expect(applicationRoutes.every((route) => route.path.startsWith('/'))).toBe(true);
-    expect(new Set(applicationRoutes.map((route) => route.path)).size).toBe(applicationRoutes.length);
-    expect(applicationRoutes.every((route) => route.public || Array.isArray(route.roles))).toBe(true);
+    expect(new Set(applicationRoutes.map((route) => route.path)).size).toBe(
+      applicationRoutes.length
+    );
+    expect(applicationRoutes.every((route) => route.public || Array.isArray(route.roles))).toBe(
+      true
+    );
   });
 
   it('allows public routes without roles and rejects protected routes without roles', () => {
     expect(
-      discoverModuleRoutes({ 'routes/public.jsx': [{ path: '/public', public: true, element: 'page' }] })
+      discoverModuleRoutes({
+        'routes/public.jsx': [{ path: '/public', public: true, element: 'page' }]
+      })
     ).toMatchObject([{ path: '/public', public: true, roles: [] }]);
     expect(() =>
       discoverModuleRoutes({ 'routes/bad.jsx': [{ path: '/bad', element: 'page' }] })
@@ -40,7 +46,7 @@ describe('module route discovery', () => {
 
   it('uses the app login fallback when modules do not declare /login', () => {
     const routes = addLoginFallback(
-      [{ path: '/m1', roles: ['SINH_VIEN'], element: 'module page' }],
+      [{ path: '/example', roles: ['SINH_VIEN'], element: 'module page' }],
       { path: '/login', element: 'app login' }
     );
 

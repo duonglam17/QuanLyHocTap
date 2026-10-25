@@ -4,6 +4,7 @@ import { FormField } from './FormField.jsx';
 import { FileInput } from './FileInput.jsx';
 import { SearchInput } from './SearchInput.jsx';
 import { StatusBadge } from './StatusBadge.jsx';
+import { statusEntries } from './statusLabels.js';
 import { Pagination } from './Pagination.jsx';
 import { Input } from '../atoms/Input.jsx';
 
@@ -51,5 +52,46 @@ describe('shared molecules', () => {
     expect(screen.getByText('Nộp trễ')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Sau' }));
     expect(onPageChange).toHaveBeenCalledWith(3);
+  });
+
+  it('keeps every status table unique and covers the contract enums', () => {
+    Object.values(statusEntries).forEach((entries) => {
+      const values = entries.map(([value]) => value);
+      expect(new Set(values).size).toBe(values.length);
+    });
+
+    expect(statusEntries.account.map(([value]) => value)).toEqual([
+      'ACTIVE',
+      'LOCKED',
+      'TEMPORARY_LOCKED'
+    ]);
+    expect(statusEntries.course.map(([value]) => value)).toEqual([
+      'DRAFT',
+      'PUBLISHED',
+      'ARCHIVED'
+    ]);
+    expect(statusEntries.submission.map(([value]) => value)).toEqual([
+      'NOT_SUBMITTED',
+      'SUBMITTED',
+      'SUBMITTED_LATE',
+      'GRADED'
+    ]);
+    expect(statusEntries.attempt.map(([value]) => value)).toEqual([
+      'IN_PROGRESS',
+      'SUBMITTED',
+      'AUTO_SUBMITTED'
+    ]);
+    expect(statusEntries.schedule.map(([value]) => value)).toEqual([
+      'SCHEDULED',
+      'RESCHEDULED',
+      'CANCELLED'
+    ]);
+  });
+
+  it('shows an outline fallback for unknown status values', () => {
+    render(<StatusBadge type="submission" value="UNRECOGNIZED" />);
+
+    expect(screen.getByText('UNRECOGNIZED')).toBeInTheDocument();
+    expect(screen.getByText('UNRECOGNIZED')).toHaveClass('border');
   });
 });

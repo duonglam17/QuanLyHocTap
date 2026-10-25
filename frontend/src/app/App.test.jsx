@@ -9,13 +9,13 @@ describe('route guard scaffold', () => {
   it('redirects unauthenticated users to the login placeholder', async () => {
     render(
       <MemoryRouter
-        initialEntries={['/m1']}
+        initialEntries={['/protected']}
         future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
       >
         <AuthProvider>
           <Routes>
             <Route
-              path="/m1"
+              path="/protected"
               element={
                 <RoleGuard roles={['ADMIN']}>
                   <div>Protected placeholder</div>
