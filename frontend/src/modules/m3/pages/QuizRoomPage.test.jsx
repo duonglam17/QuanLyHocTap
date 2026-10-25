@@ -266,6 +266,10 @@ describe('QuizRoomPage', () => {
       });
     });
     expect(await screen.findByText('Điểm: 8')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Xem lại kết quả' })).toHaveAttribute(
+      'href',
+      '/attempts/101/results'
+    );
   });
 
   it('renders an idempotent prior submission result without revealing a hidden score', async () => {
@@ -289,6 +293,10 @@ describe('QuizRoomPage', () => {
     expect(await screen.findByText('Đã nộp bài thi')).toBeInTheDocument();
     expect(screen.getByText('Điểm sẽ được công bố sau.')).toBeInTheDocument();
     expect(screen.queryByText(/Điểm:/)).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Xem lại kết quả' })).toHaveAttribute(
+      'href',
+      '/attempts/101/results'
+    );
     expect(api.post).toHaveBeenCalledWith('/attempts/101/submit', {
       clientInstanceId: instanceId,
       sessionToken: 'session-token-1'
