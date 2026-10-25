@@ -2,6 +2,7 @@ import { LoginPage } from '../pages/LoginPage.jsx';
 import { CoursesPage } from '../pages/CoursesPage.jsx';
 import { CourseDetailPage } from '../pages/CourseDetailPage.jsx';
 import { AdminUsersPage } from '../pages/AdminUsersPage.jsx';
+import { LessonDetailPage } from '../pages/LessonDetailPage.jsx';
 
 export const routes = [
   {
@@ -28,6 +29,13 @@ export const routes = [
   {
     path: '/courses/:courseId',
     element: <CourseDetailPage />,
+    roles: ['ADMIN', 'GIANG_VIEN', 'SINH_VIEN'],
+    layout: 'default',
+    public: false
+  },
+  {
+    path: '/lessons/:lessonId',
+    element: <LessonDetailPage />,
     roles: ['ADMIN', 'GIANG_VIEN', 'SINH_VIEN'],
     layout: 'default',
     public: false
