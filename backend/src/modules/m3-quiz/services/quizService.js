@@ -169,6 +169,7 @@ function createQuizService({
             openTime: quiz.openTime,
             closeTime: quiz.closeTime,
             status: quiz.status,
+            attemptId: quiz.attemptId == null ? null : Number(quiz.attemptId),
             attemptStatus: quiz.attemptStatus ?? 'NOT_STARTED',
             canStart: Boolean(quiz.canStart),
             visibleToStudent

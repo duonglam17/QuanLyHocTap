@@ -112,7 +112,7 @@ function createQuizRepository(db) {
         `SELECT q.id, q.course_id AS courseId, q.title, q.description,
                 q.duration_minutes AS durationMinutes, q.open_time AS openTime,
                 q.close_time AS closeTime, q.show_score_immediately AS showScoreImmediately,
-                q.status, a.status AS attemptStatus,
+                q.status, a.id AS attemptId, a.status AS attemptStatus,
                 CASE
                   WHEN q.show_score_immediately = TRUE OR q.status = 'CLOSED' OR q.close_time <= ?
                     THEN a.score

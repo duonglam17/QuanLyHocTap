@@ -119,7 +119,7 @@ paths:
             default: 20
       responses:
         '200':
-          description: Owner sees all quizzes; an enrolled student sees only published quizzes and their own attempt state
+          description: Owner sees all quizzes; an enrolled student sees only published quizzes and their own attempt state and attemptId. The schema allows one attempt per student and quiz.
           content:
             application/json:
               schema:
@@ -153,6 +153,7 @@ paths:
                         openTime: '2026-11-25T01:00:00.000Z'
                         closeTime: '2026-11-25T03:00:00.000Z'
                         status: PUBLISHED
+                        attemptId: null
                         attemptStatus: NOT_STARTED
                         canStart: true
                         visibleToStudent: false
@@ -1384,6 +1385,7 @@ components:
         - openTime
         - closeTime
         - status
+        - attemptId
         - attemptStatus
         - canStart
         - visibleToStudent
@@ -1412,6 +1414,11 @@ components:
           enum:
             - PUBLISHED
             - CLOSED
+        attemptId:
+          type: integer
+          format: int64
+          nullable: true
+          description: ID of this authenticated student's attempt for this quiz, or null when the student has not started. Never identifies another student's attempt.
         attemptStatus:
           type: string
           enum:
