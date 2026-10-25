@@ -218,6 +218,7 @@ describe('QuizTab', () => {
         openTime: '2030-12-01T01:00:00.000Z',
         closeTime: '2030-12-01T03:00:00.000Z',
         status: 'PUBLISHED',
+        attemptId: null,
         attemptStatus: 'NOT_STARTED',
         canStart: true,
         visibleToStudent: false
@@ -249,6 +250,7 @@ describe('QuizTab', () => {
         openTime: '2030-12-01T01:00:00.000Z',
         closeTime: '2030-12-01T03:00:00.000Z',
         status: 'PUBLISHED',
+        attemptId: 130,
         attemptStatus: 'IN_PROGRESS',
         canStart: false,
         visibleToStudent: false
@@ -262,6 +264,64 @@ describe('QuizTab', () => {
     expect(await screen.findByRole('link', { name: 'Tiếp tục làm bài' })).toHaveAttribute(
       'href',
       '/quizzes/13/take'
+    );
+  });
+
+  it('links a submitted student attempt to its result using attemptId', async () => {
+    vi.spyOn(api, 'get').mockResolvedValue({
+      items: [{
+        id: 14,
+        courseId: 3,
+        title: 'Đề đã nộp',
+        description: null,
+        durationMinutes: 30,
+        openTime: '2030-12-01T01:00:00.000Z',
+        closeTime: '2030-12-01T03:00:00.000Z',
+        status: 'PUBLISHED',
+        attemptId: 140,
+        attemptStatus: 'SUBMITTED',
+        canStart: false,
+        visibleToStudent: true,
+        score: 8
+      }],
+      page: 1,
+      limit: 20,
+      total: 1
+    });
+    renderTab({ role: 'SINH_VIEN', isOwner: false });
+
+    expect(await screen.findByRole('link', { name: 'Xem kết quả' })).toHaveAttribute(
+      'href',
+      '/attempts/140/results'
+    );
+  });
+
+  it('links an auto-submitted student attempt to its result using attemptId', async () => {
+    vi.spyOn(api, 'get').mockResolvedValue({
+      items: [{
+        id: 15,
+        courseId: 3,
+        title: 'Đề tự thu',
+        description: null,
+        durationMinutes: 30,
+        openTime: '2030-12-01T01:00:00.000Z',
+        closeTime: '2030-12-01T03:00:00.000Z',
+        status: 'CLOSED',
+        attemptId: 150,
+        attemptStatus: 'AUTO_SUBMITTED',
+        canStart: false,
+        visibleToStudent: true,
+        score: 7
+      }],
+      page: 1,
+      limit: 20,
+      total: 1
+    });
+    renderTab({ role: 'SINH_VIEN', isOwner: false });
+
+    expect(await screen.findByRole('link', { name: 'Xem kết quả' })).toHaveAttribute(
+      'href',
+      '/attempts/150/results'
     );
   });
 });

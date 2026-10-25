@@ -49,12 +49,12 @@
 |---|---|
 | Route / vị trí | Tab `quizzes` trong `/courses/:courseId`; host tab truyền `{ courseId, course, role, isOwner }`. |
 | Vai trò | `GIANG_VIEN`, `SINH_VIEN`; hành động thay đổi theo vai trò và quyền chủ khóa. |
-| API | `GET /api/courses/{courseId}/quizzes?page={page}&limit=20`. Chủ khóa nhận cả nháp cùng `questionCount` và `hasAttempts`; sinh viên đã ghi danh chỉ nhận đề đã công bố/đóng, `attemptStatus`, `canStart` do server tính, `visibleToStudent` và `score` chỉ khi được phép xem. |
+| API | `GET /api/courses/{courseId}/quizzes?page={page}&limit=20`. Chủ khóa nhận cả nháp cùng `questionCount` và `hasAttempts`; sinh viên đã ghi danh chỉ nhận đề đã công bố/đóng, `attemptId` của chính mình (null nếu chưa có lượt), `attemptStatus`, `canStart` do server tính, `visibleToStudent` và `score` chỉ khi được phép xem. |
 | Ba trạng thái | Khi API danh sách được bổ sung: **Loading** skeleton; **Error** lỗi server và thử lại; **Empty** chưa có đề; **Success** hiển thị đề, trạng thái và khung giờ. |
-| Hành động chính | Chủ khóa mở trình tạo đề. Sinh viên vào phòng thi khi `canStart` là true; lượt `IN_PROGRESS` có thể tiếp tục, còn server vẫn là quyết định cuối cùng. |
+| Hành động chính | Chủ khóa mở trình tạo đề. Sinh viên có lượt `SUBMITTED`/`AUTO_SUBMITTED` và `attemptId` khác null mở `/attempts/:attemptId/results`; lượt `IN_PROGRESS` tiếp tục tại `/quizzes/:quizId/take`; chưa có lượt (`attemptId` null) chỉ vào thi khi `canStart` là true. Server vẫn là quyết định cuối cùng. |
 | Component | Shared: `StatusBadge`, `DataState`, `DataTable`, `Pagination`, `Button`. Riêng M3: `QuizListTab`, `QuizListItem`. |
 | Slot | Mục `quizzes` trong `course-tabs.jsx`. |
-| Giới hạn API | Phân trang dùng `page` và `limit` (tối đa 100). Sinh viên không nhận câu hỏi trong danh sách; câu hỏi và đáp án chỉ được trả cho chủ khóa qua endpoint chi tiết. |
+| Giới hạn API | Phân trang dùng `page` và `limit` (tối đa 100). `attemptId` chỉ định danh lượt của sinh viên hiện tại, không dùng `quizId` thay thế. Sinh viên không nhận câu hỏi trong danh sách; câu hỏi và đáp án chỉ được trả cho chủ khóa qua endpoint chi tiết. |
 
 ## 4. Trình tạo và quản lý đề
 
@@ -94,12 +94,10 @@
 | Vai trò | `SINH_VIEN` xem lượt thi của mình; `GIANG_VIEN` xem theo quyền máy chủ. |
 | API | `POST /api/attempts/{attemptId}/submit` trả kết quả ngay sau nộp; `GET /api/attempts/{attemptId}/result` tải lại kết quả. |
 | Ba trạng thái | **Loading:** đang tải kết quả. **Error:** lỗi tải, có thể thử lại; 403/404 chuyển tới trang ứng dụng tương ứng. **Empty:** chưa có dữ liệu kết quả. **Success:** `IN_PROGRESS` quay về phòng thi; `SUBMITTED`/`AUTO_SUBMITTED` hiển thị trạng thái và thời điểm nộp; chỉ hiện điểm và số câu đúng khi `visibleToStudent` true. Điểm null hiển thị “Chưa có”, không đổi thành 0. |
-| Hành động chính | Màn hình sau submit dẫn tới trang xem lại kết quả. Liên kết từ danh sách đề đang chờ API cung cấp `attemptId`. |
+| Hành động chính | Màn hình sau submit và danh sách đề của sinh viên có lượt đã nộp dẫn tới trang xem lại kết quả bằng `attemptId`. |
 | Component | Shared: `EmptyState`, `ErrorState`, `Skeleton`, `StatusBadge`; tiện ích `formatScore`, `formatDateTime`. Riêng M3: `ResultPage`. |
 | Slot | Route M3 riêng, layout `default`, không có nav. |
 | Giới hạn API | Không có API xem lại câu trả lời; tuyệt đối không hiển thị nội dung câu hỏi hoặc đáp án đúng. |
-
-**Phụ thuộc nối từ danh sách đề:** `QuizStudentListItem` hiện có quiz `id` và `attemptStatus`, nhưng chưa có `attemptId`. Route kết quả cần `attemptId`; vì vậy chưa thể tạo liên kết an toàn từ danh sách cho đến khi backend bổ sung trường đó vào API danh sách đề và cập nhật OpenAPI. Không dùng `quizId` thay cho `attemptId`. |
 
 ## 7. Bảng tin khóa học
 
