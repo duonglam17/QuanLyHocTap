@@ -2,6 +2,7 @@ import { AssignmentSubmissionPage } from '../pages/AssignmentSubmissionPage.jsx'
 import { CourseAssignmentsPage } from '../pages/CourseAssignmentsPage.jsx';
 import { SubmissionGradingPage } from '../pages/SubmissionGradingPage.jsx';
 import { MyGradesPage } from '../pages/MyGradesPage.jsx';
+import { ClassGradebookPage } from '../pages/ClassGradebookPage.jsx';
 
 export const routes = [
   {
@@ -16,6 +17,13 @@ export const routes = [
       group: 'main'
     },
     element: <MyGradesPage />
+  },
+  {
+    path: '/courses/:courseId/grades',
+    roles: ['GIANG_VIEN'],
+    layout: 'default',
+    public: false,
+    element: <ClassGradebookPage />
   },
   {
     path: '/courses/:courseId/assignments/grading',

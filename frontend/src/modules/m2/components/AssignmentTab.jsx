@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ClipboardCheck, Pencil, Plus } from 'lucide-react';
+import { ClipboardCheck, FileSpreadsheet, Pencil, Plus } from 'lucide-react';
 import { useApiMutation } from '../../../shared/hooks/useApiMutation.js';
 import { useApiQuery } from '../../../shared/hooks/useApiQuery.js';
 import { formatDateTime } from '../../../shared/lib/formatters.js';
@@ -239,6 +239,10 @@ export function AssignmentTab({ courseId, course, role, isOwner = false }) {
         </div>
         {canManage ? (
           <div className="flex flex-wrap gap-2">
+            <Button onClick={() => navigate(`/courses/${courseId}/grades`)} variant="outline">
+              <FileSpreadsheet aria-hidden="true" className="mr-2 size-4" />
+              Bảng điểm lớp
+            </Button>
             <Button
               onClick={() => navigate(`/courses/${courseId}/assignments/grading`)}
               variant="outline"
