@@ -85,11 +85,48 @@ const updateQuestionsSchema = z.object({
 
 const quizIdSchema = z.object({ params: quizIdParamsSchema });
 const questionIdSchema = z.object({ params: questionIdParamsSchema });
+const listQuizzesSchema = z.object({
+  params: z.object({ courseId: z.string().regex(/^[1-9]\d*$/) }),
+  query: z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(20)
+  })
+});
+const updateQuizSchema = z.object({
+  params: quizIdParamsSchema,
+  body: z
+    .object({
+      title: z.string().trim().min(1).max(200).optional(),
+      description: z.string().nullable().optional(),
+      duration_minutes: z.number().int().positive().optional(),
+      open_time: dateTimeSchema.optional(),
+      close_time: dateTimeSchema.optional(),
+      show_score_immediately: z.boolean().optional()
+    })
+    .refine((body) => Object.keys(body).length > 0, {
+      message: 'Cần cung cấp ít nhất một trường để cập nhật.'
+    })
+    .superRefine((body, context) => {
+      if (
+        body.open_time !== undefined &&
+        body.close_time !== undefined &&
+        body.open_time >= body.close_time
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['close_time'],
+          message: 'Thời gian đóng đề phải sau thời gian mở đề.'
+        });
+      }
+    })
+});
 
 module.exports = {
   createQuizSchema,
   updateQuestionsSchema,
   quizIdSchema,
   questionIdSchema,
+  listQuizzesSchema,
+  updateQuizSchema,
   isValidDateTime
 };

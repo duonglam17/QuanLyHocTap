@@ -50,11 +50,20 @@ const notificationsPort = {
 };
 
 const quizRoutesService = {
+  listQuizzes(...args) {
+    return quizService.listQuizzes(...args);
+  },
+  getQuiz(...args) {
+    return quizService.getQuiz(...args);
+  },
   createQuiz(...args) {
     return quizService.createQuiz(...args);
   },
   updateQuestions(...args) {
     return quizService.updateQuestions(...args);
+  },
+  updateQuiz(...args) {
+    return quizService.updateQuiz(...args);
   },
   deleteQuestion(...args) {
     return quizService.deleteQuestion(...args);
@@ -126,7 +135,8 @@ function init(ctx) {
     repository: quizRepository,
     getCourseAccess: () => ctx.contracts.getPort('courseAccess', { optional: true }),
     withTransaction: ctx.common.withTransaction,
-    sanitizeText: ctx.common.sanitizeText
+    sanitizeText: ctx.common.sanitizeText,
+    clock: ctx.common.clock
   });
   ctx.contracts.registerPort('quizUsage', {
     hasCourseData(...args) {

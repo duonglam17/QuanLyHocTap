@@ -41,12 +41,31 @@ function sanitizeQuestion(question, sanitizeText) {
   return { content, options };
 }
 
-function createQuizService({ repository, getCourseAccess, withTransaction, sanitizeText }) {
-  async function requireCourseAccess(courseId, userId) {
+function parseServerDateTime(value) {
+  if (value instanceof Date) return value;
+  if (typeof value !== 'string') return new Date(Number.NaN);
+  const normalized = value.includes('T') ? value : value.replace(' ', 'T');
+  return new Date(/[zZ]|[+-]\d{2}:\d{2}$/.test(normalized) ? normalized : `${normalized}+07:00`);
+}
+
+function createQuizService({
+  repository,
+  getCourseAccess,
+  withTransaction,
+  sanitizeText,
+  clock = { now: () => new Date() }
+}) {
+  function getCourseAccessPort() {
     const courseAccess = getCourseAccess();
+    if (!courseAccess || typeof courseAccess.getCourse !== 'function') {
+      throw new InternalServerError('Port courseAccess chưa sẵn sàng.');
+    }
+    return courseAccess;
+  }
+
+  async function requireCourseAccess(courseId, userId) {
+    const courseAccess = getCourseAccessPort();
     if (
-      !courseAccess ||
-      typeof courseAccess.getCourse !== 'function' ||
       typeof courseAccess.isOwner !== 'function' ||
       typeof courseAccess.assertCourseWritable !== 'function'
     ) {
@@ -62,6 +81,34 @@ function createQuizService({ repository, getCourseAccess, withTransaction, sanit
     }
     await courseAccess.assertCourseWritable(courseId);
     return course;
+  }
+
+  async function requireCourseReadAccess(courseId, userId, role) {
+    const courseAccess = getCourseAccessPort();
+    const course = await courseAccess.getCourse(courseId);
+    if (!course) {
+      throw new NotFoundError('Không tìm thấy khóa học.');
+    }
+
+    if (role === 'GIANG_VIEN') {
+      if (typeof courseAccess.isOwner !== 'function') {
+        throw new InternalServerError('Port courseAccess chưa sẵn sàng.');
+      }
+      if (!(await courseAccess.isOwner(userId, courseId))) {
+        throw new ForbiddenError('Chỉ chủ khóa học mới được xem và quản lý đề thi.');
+      }
+      return { course, isOwner: true };
+    }
+    if (role === 'SINH_VIEN') {
+      if (typeof courseAccess.isEnrolled !== 'function') {
+        throw new InternalServerError('Port courseAccess chưa sẵn sàng.');
+      }
+      if (!(await courseAccess.isEnrolled(userId, courseId))) {
+        throw new ForbiddenError('Sinh viên chưa ghi danh khóa học.');
+      }
+      return { course, isOwner: false };
+    }
+    throw new ForbiddenError('Không có quyền truy cập đề thi.');
   }
 
   async function requireQuizOwner(quizId, userId, connection) {
@@ -82,6 +129,83 @@ function createQuizService({ repository, getCourseAccess, withTransaction, sanit
   }
 
   return {
+    async listQuizzes(courseId, userId, role, { page, limit }) {
+      const { isOwner } = await requireCourseReadAccess(courseId, userId, role);
+      if (isOwner) {
+        const result = await repository.listOwnerQuizzes(courseId, { page, limit });
+        return {
+          ...result,
+          page,
+          limit,
+          items: result.items.map((quiz) => ({
+            ...quiz,
+            hasAttempts: Boolean(quiz.hasAttempts),
+            questionCount: Number(quiz.questionCount)
+          }))
+        };
+      }
+
+      const now = clock.now();
+      const result = await repository.listStudentQuizzes(courseId, userId, {
+        page,
+        limit,
+        now
+      });
+      return {
+        ...result,
+        page,
+        limit,
+        items: result.items.map((quiz) => {
+          const visibleToStudent =
+            Boolean(quiz.showScoreImmediately) ||
+            quiz.status === 'CLOSED' ||
+            parseServerDateTime(quiz.closeTime).getTime() <= now.getTime();
+          const studentQuiz = {
+            id: quiz.id,
+            courseId: quiz.courseId,
+            title: quiz.title,
+            description: quiz.description,
+            durationMinutes: quiz.durationMinutes,
+            openTime: quiz.openTime,
+            closeTime: quiz.closeTime,
+            status: quiz.status,
+            attemptStatus: quiz.attemptStatus ?? 'NOT_STARTED',
+            canStart: Boolean(quiz.canStart),
+            visibleToStudent
+          };
+          if (visibleToStudent) {
+            studentQuiz.score = quiz.score == null ? null : Number(quiz.score);
+          }
+          return studentQuiz;
+        })
+      };
+    },
+
+    async getQuiz(quizId, userId, role) {
+      const quiz = await repository.findQuiz(quizId);
+      if (!quiz) {
+        throw new NotFoundError('Không tìm thấy đề thi.');
+      }
+      const { isOwner } = await requireCourseReadAccess(quiz.courseId, userId, role);
+      if (!isOwner) {
+        if (quiz.status === 'DRAFT') {
+          throw new NotFoundError('Không tìm thấy đề thi.');
+        }
+        return {
+          id: quiz.id,
+          courseId: quiz.courseId,
+          title: quiz.title,
+          description: quiz.description,
+          durationMinutes: quiz.durationMinutes,
+          openTime: quiz.openTime,
+          closeTime: quiz.closeTime,
+          showScoreImmediately: Boolean(quiz.showScoreImmediately),
+          status: quiz.status
+        };
+      }
+      return repository.loadQuiz(quizId);
+    },
+
     async createQuiz(courseId, userId, data) {
       await requireCourseAccess(courseId, userId);
       if (
@@ -140,6 +264,51 @@ function createQuizService({ repository, getCourseAccess, withTransaction, sanit
         const quiz = await requireQuizOwner(quizId, userId, connection);
         await assertNoAttempts(connection, quiz);
         await repository.replaceQuestions(connection, quizId, safeQuestions);
+      });
+      return repository.loadQuiz(quizId);
+    },
+
+    async updateQuiz(quizId, userId, data) {
+      await withTransaction(async (connection) => {
+        const quiz = await requireQuizOwner(quizId, userId, connection);
+        await assertNoAttempts(connection, quiz);
+        const updated = {
+          title: data.title === undefined ? quiz.title : sanitizeText(data.title),
+          description:
+            data.description === undefined
+              ? quiz.description
+              : data.description === null
+                ? null
+                : sanitizeText(data.description),
+          durationMinutes:
+            data.duration_minutes === undefined ? quiz.durationMinutes : data.duration_minutes,
+          openTime: data.open_time === undefined ? quiz.openTime : data.open_time,
+          closeTime: data.close_time === undefined ? quiz.closeTime : data.close_time,
+          showScoreImmediately:
+            data.show_score_immediately === undefined
+              ? Boolean(quiz.showScoreImmediately)
+              : data.show_score_immediately
+        };
+        if (
+          !updated.title.trim() ||
+          (updated.description !== null && !updated.description.trim())
+        ) {
+          throw new ValidationError('Tiêu đề và mô tả sau khi làm sạch không được để trống.');
+        }
+        if (
+          !Number.isInteger(updated.durationMinutes) ||
+          updated.durationMinutes < 1 ||
+          (data.open_time !== undefined && !isValidDateTime(data.open_time)) ||
+          (data.close_time !== undefined && !isValidDateTime(data.close_time)) ||
+          !Number.isFinite(parseServerDateTime(updated.openTime).getTime()) ||
+          !Number.isFinite(parseServerDateTime(updated.closeTime).getTime()) ||
+          parseServerDateTime(updated.openTime).getTime() >=
+            parseServerDateTime(updated.closeTime).getTime()
+        ) {
+          throw new ValidationError('Thông tin đề thi hoặc cửa sổ mở đề không hợp lệ.');
+        }
+        await repository.updateQuiz(connection, quizId, updated);
+        return updated;
       });
       return repository.loadQuiz(quizId);
     },
