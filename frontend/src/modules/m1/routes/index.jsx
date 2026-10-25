@@ -3,6 +3,7 @@ import { CoursesPage } from '../pages/CoursesPage.jsx';
 import { CourseDetailPage } from '../pages/CourseDetailPage.jsx';
 import { AdminUsersPage } from '../pages/AdminUsersPage.jsx';
 import { LessonDetailPage } from '../pages/LessonDetailPage.jsx';
+import { MySchedulePage } from '../pages/MySchedulePage.jsx';
 
 export const routes = [
   {
@@ -39,6 +40,19 @@ export const routes = [
     roles: ['ADMIN', 'GIANG_VIEN', 'SINH_VIEN'],
     layout: 'default',
     public: false
+  },
+  {
+    path: '/me/schedule',
+    element: <MySchedulePage />,
+    roles: ['SINH_VIEN'],
+    layout: 'default',
+    public: false,
+    nav: {
+      label: 'Lịch học của tôi',
+      icon: 'Calendar',
+      order: 15,
+      group: 'main'
+    }
   },
   {
     path: '/admin/users',
