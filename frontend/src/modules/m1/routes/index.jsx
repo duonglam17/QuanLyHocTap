@@ -1,5 +1,6 @@
 import { LoginPage } from '../pages/LoginPage.jsx';
-import { M1PlaceholderPage } from '../pages/M1PlaceholderPage.jsx';
+import { CoursesPage } from '../pages/CoursesPage.jsx';
+import { CourseDetailPage } from '../pages/CourseDetailPage.jsx';
 
 export const routes = [
   {
@@ -10,8 +11,24 @@ export const routes = [
     layout: 'bare'
   },
   {
-    path: '/m1',
+    path: '/courses',
+    element: <CoursesPage />,
     roles: ['ADMIN', 'GIANG_VIEN', 'SINH_VIEN'],
-    element: <M1PlaceholderPage />
+    layout: 'default',
+    public: false,
+    homeFor: ['GIANG_VIEN', 'SINH_VIEN'],
+    nav: {
+      label: 'Khóa học',
+      icon: 'BookOpen',
+      order: 10,
+      group: 'main'
+    }
+  },
+  {
+    path: '/courses/:courseId',
+    element: <CourseDetailPage />,
+    roles: ['ADMIN', 'GIANG_VIEN', 'SINH_VIEN'],
+    layout: 'default',
+    public: false
   }
 ];
