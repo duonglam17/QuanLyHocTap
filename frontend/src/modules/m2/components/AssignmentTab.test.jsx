@@ -136,6 +136,14 @@ describe('AssignmentTab', () => {
     expect(screen.queryByRole('button', { name: 'Tạo bài tập' })).not.toBeInTheDocument();
   });
 
+  it('provides course gradebook access to the course instructor', async () => {
+    vi.spyOn(api, 'get').mockResolvedValue({ data: [] });
+
+    renderTab();
+
+    expect(await screen.findByRole('button', { name: 'Bảng điểm lớp' })).toBeInTheDocument();
+  });
+
   it('edits an assignment for the course owner', async () => {
     const assignment = {
       id: 9,
