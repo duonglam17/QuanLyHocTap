@@ -8,6 +8,7 @@ import {
   TableHeader,
   TableRow
 } from '../../../shared/components/atoms/Table.jsx';
+import { StatusBadge } from '../../../shared/components/molecules/StatusBadge.jsx';
 import { formatScore } from '../../../shared/lib/formatters.js';
 import { getMyCourseGrades } from '../api/grades.js';
 
@@ -15,7 +16,7 @@ function isGradebookEmpty(gradebook) {
   return !gradebook?.assignments?.length && !gradebook?.quizzes?.length;
 }
 
-function GradeRows({ title, rows, showFeedback = false, statusLabel }) {
+function GradeRows({ title, rows, showFeedback = false, statusType }) {
   return (
     <section className="grid gap-3">
       <h2 className="text-lg font-semibold">{title}</h2>
@@ -38,7 +39,13 @@ function GradeRows({ title, rows, showFeedback = false, statusLabel }) {
                   <TableCell>{formatScore(item.score)}</TableCell>
                   <TableCell>{formatScore(item.maxScore)}</TableCell>
                   {showFeedback ? <TableCell>{item.feedback || 'Chưa có'}</TableCell> : null}
-                  <TableCell>{statusLabel(item)}</TableCell>
+                  <TableCell>
+                    {item.status ? (
+                      <StatusBadge type={statusType} value={item.status} />
+                    ) : (
+                      'Chưa có'
+                    )}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -84,12 +91,12 @@ export function CourseGradebook({ courseId }) {
             <GradeRows
               rows={gradebook.assignments}
               showFeedback
-              statusLabel={(item) => item.status || 'Chưa có'}
+              statusType="submission"
               title="Điểm bài tập"
             />
             <GradeRows
               rows={gradebook.quizzes}
-              statusLabel={(item) => item.status || 'Chưa có'}
+              statusType="attempt"
               title="Điểm trắc nghiệm"
             />
           </div>

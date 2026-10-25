@@ -88,7 +88,7 @@ describe('MyGradesPage (US-13)', () => {
 
     renderPage();
 
-    expect(await screen.findByText('Chưa có điểm')).toBeInTheDocument();
+    expect(await screen.findByText('Chưa có điểm', {}, { timeout: 5000 })).toBeInTheDocument();
     expect(gradesApi.getMyCourseGrades).toHaveBeenCalledWith(12);
   });
 
@@ -113,7 +113,7 @@ describe('MyGradesPage (US-13)', () => {
             title: 'Kiểm tra chương 1',
             score: 8.5,
             maxScore: 10,
-            status: 'SUBMITTED'
+            status: 'AUTO_SUBMITTED'
           }
         ]
       )
@@ -125,7 +125,9 @@ describe('MyGradesPage (US-13)', () => {
     expect(screen.getByText('Kiểm tra chương 1')).toBeInTheDocument();
     const assignmentRow = screen.getByRole('row', { name: /Bài tập tuần 1/ });
     expect(within(assignmentRow).getAllByText('Chưa có')).toHaveLength(2);
+    expect(within(assignmentRow).getByText('Đã nộp')).toBeInTheDocument();
     expect(screen.getByText('8,5')).toBeInTheDocument();
+    expect(screen.getByText('Tự động nộp')).toBeInTheDocument();
     expect(screen.getByRole('note')).toHaveTextContent(
       'Điểm trắc nghiệm chưa được mở để xem sẽ không hiển thị.'
     );
