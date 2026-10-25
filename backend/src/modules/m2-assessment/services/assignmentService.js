@@ -234,10 +234,32 @@ class AssignmentService {
   /**
    * Lấy chi tiết bài tập theo ID
    */
-  async getAssignmentById(id) {
+  async getAssignmentById(id, user) {
     const assignment = await this.assignmentRepository.findById(id);
     if (!assignment) {
       throw new NotFoundError('Không tìm thấy bài tập yêu cầu.');
+    }
+
+    if (user?.role === 'ADMIN') return assignment;
+    const courseAccessPort = this.getPort('courseAccess', { optional: true });
+    if (user?.role === 'GIANG_VIEN') {
+      await this._assertCourseOwner(assignment.courseId, user.id, courseAccessPort);
+    } else if (user?.role === 'SINH_VIEN') {
+      if (
+        !courseAccessPort ||
+        typeof courseAccessPort.getCourse !== 'function' ||
+        typeof courseAccessPort.isEnrolled !== 'function'
+      ) {
+        logger.warn('Port "courseAccess" chưa sẵn sàng để xác minh ghi danh.');
+        throw new ForbiddenError('Không thể xác minh quyền ghi danh khóa học.');
+      }
+      const course = await courseAccessPort.getCourse(assignment.courseId);
+      if (!course) throw new NotFoundError('Không tìm thấy khóa học yêu cầu.');
+      if (!(await courseAccessPort.isEnrolled(user.id, assignment.courseId))) {
+        throw new ForbiddenError('Sinh viên chưa ghi danh vào khóa học này.');
+      }
+    } else {
+      throw new ForbiddenError('Bạn không có quyền xem bài tập này.');
     }
     return assignment;
   }
@@ -338,7 +360,10 @@ class AssignmentService {
    * - Nếu bài tập đã có bài nộp: Tuyệt đối không xóa cứng (Hard Delete), chỉ cho phép xóa mềm.
    */
   async deleteAssignment(assignmentId, instructorId) {
-    const assignment = await this.getAssignmentById(assignmentId);
+    const assignment = await this.getAssignmentById(assignmentId, {
+      id: instructorId,
+      role: 'GIANG_VIEN'
+    });
 
     // Kiểm tra quyền sở hữu khóa học
     const courseAccessPort = this.getPort('courseAccess', { optional: true });

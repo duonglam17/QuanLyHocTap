@@ -11,11 +11,17 @@ const statusLabels = {
     PUBLISHED: ['Đang mở', 'success'],
     ARCHIVED: ['Đã lưu trữ', 'outline']
   },
+  assignment: {
+    OPEN: ['Đang nhận bài', 'success'],
+    CLOSED: ['Đã đóng', 'outline'],
+    ARCHIVED: ['Đã lưu trữ', 'outline']
+  },
   submission: {
     NOT_SUBMITTED: ['Chưa nộp', 'secondary'],
     SUBMITTED: ['Đã nộp', 'success'],
     SUBMITTED_LATE: ['Nộp trễ', 'warning'],
-    GRADED: ['Đã chấm', 'default']
+    GRADED: ['Đã chấm', 'default'],
+    NOT_SUBMITTED: ['Chưa nộp', 'outline']
   },
   attempt: {
     IN_PROGRESS: ['Đang làm', 'warning'],

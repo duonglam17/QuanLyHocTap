@@ -49,6 +49,7 @@ router.patch(
 router.get(
   '/assignments/:id',
   requireAuth,
+  requireRole(['GIANG_VIEN', 'SINH_VIEN', 'ADMIN']),
   assignmentController.getAssignmentDetail
 );
 

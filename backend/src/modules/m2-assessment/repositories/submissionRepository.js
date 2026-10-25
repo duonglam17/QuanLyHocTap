@@ -17,6 +17,29 @@ class SubmissionRepository {
     return rows[0] || null;
   }
 
+  async findAssignment(assignmentId) {
+    const [rows] = await this.db.query(
+      `SELECT \`id\`, \`course_id\`, \`deadline\`, \`allow_late\`,
+              \`allow_late_submission\`, \`status\`, \`deleted_at\`
+       FROM \`assignments\`
+       WHERE \`id\` = ? AND \`deleted_at\` IS NULL
+       LIMIT 1`,
+      [assignmentId]
+    );
+    return rows[0] || null;
+  }
+
+  async findByAssignmentAndStudent(assignmentId, studentId) {
+    const [rows] = await this.db.query(
+      `SELECT *
+       FROM \`submissions\`
+       WHERE \`assignment_id\` = ? AND \`student_id\` = ?
+       LIMIT 1`,
+      [assignmentId, studentId]
+    );
+    return rows[0] ? new Submission(rows[0]) : null;
+  }
+
   async findByAssignmentAndStudentForUpdate(assignmentId, studentId, connection) {
     const [rows] = await connection.query(
       `SELECT *

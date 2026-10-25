@@ -381,9 +381,70 @@ test('US-08 uses a parameterized unique-key upsert for double-submit protection'
   assert.equal(queries[0].params[1], 5);
 });
 
+test('US-08 reads only the authenticated student submission after enrollment check', async () => {
+  const { service, repository } = createFixture();
+  const savedSubmission = { id: 12, studentId: 5, status: 'SUBMITTED' };
+  let requestedAssignmentId;
+  let requestedStudentId;
+  repository.findAssignment = async (assignmentId) => {
+    requestedAssignmentId = assignmentId;
+    return { course_id: 9 };
+  };
+  repository.findByAssignmentAndStudent = async (assignmentId, studentId) => {
+    requestedAssignmentId = assignmentId;
+    requestedStudentId = studentId;
+    return savedSubmission;
+  };
+
+  const result = await service.getMySubmission({ assignmentId: 4, studentId: 5 });
+
+  assert.equal(result, savedSubmission);
+  assert.equal(requestedAssignmentId, 4);
+  assert.equal(requestedStudentId, 5);
+});
+
+test('US-08 returns HTTP 413 for uploads larger than the accepted file size', async (t) => {
+  const submissionController = {
+    async getMySubmission(req, res) {
+      return res.status(200).json({ success: true, data: null });
+    },
+    async submitAssignment() {
+      assert.fail('Oversized upload must be rejected before reaching the controller.');
+    }
+  };
+  const app = express();
+  app.use(
+    '/api',
+    createSubmissionRouter({
+      submissionController,
+      uploadLimiter: (req, res, next) => next()
+    })
+  );
+  app.use(errorHandler);
+  const originalQuery = db.query;
+  db.query = async () => [[{ status: 'ACTIVE', token_version: 0 }], []];
+  t.after(() => {
+    db.query = originalQuery;
+  });
+  const token = jwt.sign({ id: 5, role: 'SINH_VIEN', token_version: 0 }, config.JWT_SECRET, {
+    expiresIn: '5m'
+  });
+
+  const response = await request(app)
+    .post('/api/assignments/4/submissions')
+    .set('Authorization', ['Bearer', token].join(' '))
+    .attach('file', Buffer.alloc(20 * 1024 * 1024 + 1), 'large.pdf');
+
+  assert.equal(response.status, 413);
+  assert.equal(response.body.message, 'Tệp bài nộp không được vượt quá 20MB.');
+});
+
 test('US-08 applies a 10 requests per minute limit to authenticated uploads', async (t) => {
   let handledUploads = 0;
   const submissionController = {
+    async getMySubmission(req, res) {
+      return res.status(200).json({ success: true, data: null });
+    },
     async submitAssignment(req, res) {
       handledUploads += 1;
       return res.status(201).json({ success: true });

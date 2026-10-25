@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const { ValidationError } = require('../../../common/errors');
+const { AppError, BadRequestError } = require('../../../common/errors');
 const { rateLimit, requireAuth, requireRole } = require('../../../common');
 const SubmissionController = require('../controllers/submissionController');
 const SubmissionRepository = require('../repositories/submissionRepository');
@@ -29,6 +29,13 @@ function createSubmissionRouter({
     }
   }).single('file');
 
+  router.get(
+    '/assignments/:assignmentId/submissions/me',
+    requireAuth,
+    requireRole(['SINH_VIEN']),
+    controller.getMySubmission
+  );
+
   router.post(
     '/assignments/:assignmentId/submissions',
     requireAuth,
@@ -40,10 +47,10 @@ function createSubmissionRouter({
           return next();
         }
         if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
-          return next(new ValidationError('Tệp bài nộp không được vượt quá 20MB.'));
+          return next(new AppError('Tệp bài nộp không được vượt quá 20MB.', 'PAYLOAD_TOO_LARGE', 413));
         }
         if (error instanceof multer.MulterError) {
-          return next(new ValidationError('Yêu cầu chỉ được đính kèm một tệp bài làm.'));
+          return next(new BadRequestError('Yêu cầu chỉ được đính kèm một tệp bài làm.'));
         }
         return next(error);
       });

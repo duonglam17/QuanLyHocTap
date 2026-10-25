@@ -3,6 +3,22 @@ class SubmissionController {
     this.submissionService = submissionService;
   }
 
+  getMySubmission = async (req, res, next) => {
+    try {
+      const submission = await this.submissionService.getMySubmission({
+        assignmentId: req.params.assignmentId,
+        studentId: req.user.id
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: submission?.toJSON ? submission.toJSON() : submission
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   submitAssignment = async (req, res, next) => {
     try {
       const submission = await this.submissionService.submitAssignment({

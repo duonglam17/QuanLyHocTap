@@ -8,113 +8,140 @@ servers:
 tags:
   - name: M2 Assessment
 paths:
-  /api/courses/{courseId}/assignments:
-    parameters:
-      - name: courseId
-        in: path
-        required: true
-        schema:
-          type: integer
-          minimum: 1
+  /api/assignments/{id}:
     get:
       tags: [M2 Assessment]
-      summary: List assignments for a course accessible to the authenticated owner or enrolled student
-      operationId: getCourseAssignments
+      summary: Get assignment details for an enrolled student or course owner
+      operationId: getAssignmentDetail
       security:
         - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
       responses:
         "200":
-          description: Assignments ordered by deadline and ID. Student responses include their submission status.
+          description: Assignment details.
           content:
             application/json:
               schema:
                 type: object
-                required: [success, count, data]
+                required: [success, data]
                 properties:
                   success:
                     type: boolean
-                  count:
-                    type: integer
                   data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Assignment'
+                    $ref: '#/components/schemas/Assignment'
         "401":
           description: Authentication is required.
         "403":
-          description: Caller is not the course owner or an enrolled student.
+          description: The caller is not the course owner or an enrolled student.
         "404":
-          description: Course not found.
-    post:
+          description: The assignment does not exist.
+  /api/assignments/{assignmentId}/submissions/me:
+    get:
       tags: [M2 Assessment]
-      summary: Create an assignment in an instructor-owned writable course
-      operationId: createAssignment
+      summary: Get the authenticated student's submission for an assignment
+      description: Student identity is derived from the bearer token, never from a request parameter.
+      operationId: getMyAssignmentSubmission
       security:
         - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AssignmentInput'
-      responses:
-        "201":
-          description: Assignment created.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AssignmentMutationResponse'
-        "401":
-          description: Authentication is required.
-        "403":
-          description: Caller is not the course owner or the course is read-only.
-        "404":
-          description: Course not found.
-        "422":
-          description: Assignment input is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: 'common.yaml#/components/schemas/ApiError'
-  /api/assignments/{id}:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-          minimum: 1
-    patch:
-      tags: [M2 Assessment]
-      summary: Update assignment fields in an instructor-owned writable course
-      operationId: updateAssignment
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AssignmentUpdate'
+      parameters:
+        - name: assignmentId
+          in: path
+          required: true
+          schema:
+            type: integer
       responses:
         "200":
-          description: Assignment updated.
+          description: The student's current submission, or null when not submitted.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AssignmentMutationResponse'
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    oneOf:
+                      - $ref: '#/components/schemas/Submission'
+                      - type: object
+                        nullable: true
         "401":
           description: Authentication is required.
         "403":
-          description: Caller is not the course owner or the course is read-only.
+          description: The caller is not an enrolled student.
         "404":
-          description: Assignment not found.
-        "422":
-          description: Assignment input is invalid.
+          description: The assignment does not exist.
+    post:
+      tags: [M2 Assessment]
+      summary: Submit or resubmit an assignment file
+      description: >
+        Server time determines whether the submission is late. Resubmission
+        updates the existing submission and increments submission_count.
+      operationId: submitAssignment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: assignmentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF, DOCX, PPTX, ZIP, or RAR file up to 20 MiB.
+      responses:
+        "201":
+          description: First submission accepted.
           content:
             application/json:
               schema:
-                $ref: 'common.yaml#/components/schemas/ApiError'
+                $ref: '#/components/schemas/SubmissionResponse'
+        "200":
+          description: Resubmission accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionResponse'
+        "400":
+          description: The request or uploaded file is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ApiError'
+        "401":
+          description: Authentication is required.
+        "403":
+          description: The caller cannot submit or submission is past a forbidden deadline.
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ApiError'
+        "413":
+          description: The upload exceeds the 20 MiB limit.
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ApiError'
+        "429":
+          description: The upload rate limit was exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ApiError'
   /api/m2-assessment/courses/{courseId}/my-grades:
     get:
       tags: [M2 Assessment]
@@ -150,66 +177,9 @@ components:
       scheme: bearer
       bearerFormat: JWT
   schemas:
-    AssignmentInput:
-      type: object
-      required: [title, due_date]
-      properties:
-        title:
-          type: string
-          minLength: 1
-          maxLength: 200
-        description:
-          type: string
-          default: ""
-        due_date:
-          type: string
-          format: date-time
-          description: Must be in the future according to server time.
-        max_score:
-          type: number
-          minimum: 0
-          exclusiveMinimum: true
-          maximum: 10
-          default: 10
-        allow_late_submission:
-          type: boolean
-          default: false
-    AssignmentUpdate:
-      type: object
-      description: Send only fields to update. At least one property is required.
-      minProperties: 1
-      properties:
-        title:
-          type: string
-          minLength: 1
-          maxLength: 200
-        description:
-          type: string
-        due_date:
-          type: string
-          format: date-time
-          description: A changed deadline must be in the future according to server time.
-        max_score:
-          type: number
-          minimum: 0
-          exclusiveMinimum: true
-          maximum: 10
-        allow_late_submission:
-          type: boolean
-    AssignmentMutationResponse:
-      type: object
-      required: [success, message, data]
-      properties:
-        success:
-          type: boolean
-        message:
-          type: string
-        data:
-          $ref: '#/components/schemas/Assignment'
     Assignment:
       type: object
-      required:
-        [id, course_id, title, description, due_date, deadline, max_score, allow_late_submission, status]
+      required: [id, course_id, title, description, due_date, max_score, allow_late_submission, status]
       properties:
         id:
           type: integer
@@ -229,23 +199,47 @@ components:
           type: number
         allow_late_submission:
           type: boolean
-        submission_status:
-          type: string
-          nullable: true
-          enum: [SUBMITTED, SUBMITTED_LATE, GRADED]
         status:
           type: string
-          enum: [OPEN, CLOSED]
-        created_at:
+    SubmissionResponse:
+      type: object
+      required: [success, message, data]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/Submission'
+    Submission:
+      type: object
+      required:
+        [id, assignment_id, student_id, original_filename, file_size_bytes, mime_type, submitted_at, is_late, late_minutes, submission_count, status]
+      properties:
+        id:
+          type: integer
+        assignment_id:
+          type: integer
+        student_id:
+          type: integer
+        original_filename:
+          type: string
+        file_size_bytes:
+          type: integer
+        mime_type:
+          type: string
+        submitted_at:
           type: string
           format: date-time
-        updated_at:
+        is_late:
+          type: boolean
+        late_minutes:
+          type: integer
+        submission_count:
+          type: integer
+        status:
           type: string
-          format: date-time
-        deleted_at:
-          type: string
-          format: date-time
-          nullable: true
+          enum: [SUBMITTED, SUBMITTED_LATE, GRADED]
     StudentGradebookResponse:
       type: object
       required: [success, data]

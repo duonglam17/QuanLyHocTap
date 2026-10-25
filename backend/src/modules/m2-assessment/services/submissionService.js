@@ -33,14 +33,14 @@ class SubmissionService {
     this.getPort = getPortFn;
   }
 
-  async _assertEnrollment(courseId, studentId) {
+  async _assertEnrollment(courseId, studentId, { writable = true } = {}) {
     const numericCourseId = Number(courseId);
     const courseAccessPort = this.getPort('courseAccess', { optional: true });
     if (
       !courseAccessPort ||
       typeof courseAccessPort.getCourse !== 'function' ||
       typeof courseAccessPort.isEnrolled !== 'function' ||
-      typeof courseAccessPort.assertCourseWritable !== 'function'
+      (writable && typeof courseAccessPort.assertCourseWritable !== 'function')
     ) {
       logger.warn('Port "courseAccess" chưa sẵn sàng để xác minh ghi danh.');
       throw new ForbiddenError('Không thể xác minh quyền ghi danh khóa học.');
@@ -53,7 +53,28 @@ class SubmissionService {
     if (!(await courseAccessPort.isEnrolled(Number(studentId), numericCourseId))) {
       throw new ForbiddenError('Sinh viên chưa ghi danh vào khóa học này (BR-05).');
     }
-    await courseAccessPort.assertCourseWritable(numericCourseId);
+    if (writable) await courseAccessPort.assertCourseWritable(numericCourseId);
+  }
+
+  async getMySubmission({ assignmentId, studentId }) {
+    const numericAssignmentId = Number(assignmentId);
+    const numericStudentId = Number(studentId);
+    if (
+      !Number.isSafeInteger(numericAssignmentId) ||
+      numericAssignmentId <= 0 ||
+      !Number.isSafeInteger(numericStudentId) ||
+      numericStudentId <= 0
+    ) {
+      throw new ValidationError('Mã bài tập và mã sinh viên là bắt buộc.');
+    }
+
+    const assignment = await this.submissionRepository.findAssignment(numericAssignmentId);
+    if (!assignment) throw new NotFoundError('Không tìm thấy bài tập yêu cầu.');
+    await this._assertEnrollment(assignment.course_id, numericStudentId, { writable: false });
+    return this.submissionRepository.findByAssignmentAndStudent(
+      numericAssignmentId,
+      numericStudentId
+    );
   }
 
   async _removeFile(storedName, reason) {
