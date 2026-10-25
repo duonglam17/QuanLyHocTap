@@ -106,9 +106,9 @@
 | Route / vị trí | Tab `announcements` trong `/courses/:courseId`; label giao diện `Thông báo khóa học`. |
 | Vai trò | Thành viên đọc; chủ khóa và `ADMIN` được tạo/xóa (BR-17). |
 | API | `GET /api/courses/{courseId}/announcements?page={page}&limit={limit}` trả `AnnouncementPage`; `POST` cùng path nhận `{ title, content }`; `DELETE /api/announcements/{announcementId}`. |
-| Ba trạng thái | **Loading:** skeleton danh sách. **Error:** lỗi server và thử lại. **Empty:** chưa có thông báo, người có quyền có hành động tạo. **Success:** danh sách phân trang, mới nhất trước; nội dung hiển thị dạng văn bản. |
-| Hành động chính | Thành viên đọc/phân trang. Chủ khóa/Admin tạo và xóa; xóa cần ConfirmDialog. Sau POST, cập nhật danh sách và hiện thông báo thành công. |
-| Component | Shared: `DataState`, `PageHeader`, `Pagination`, `FormDialog`, `FormField`, `Input`, `Textarea`, `ConfirmDialog`, `Button`. Riêng M3: `AnnouncementTab`, `AnnouncementCard`, `AnnouncementForm`. |
+| Ba trạng thái | **Loading:** skeleton danh sách. **Error:** lỗi server và thử lại. **Empty:** chưa có thông báo, chủ khóa/Admin có hành động tạo. **Success:** danh sách phân trang theo `page`/`limit`, mới nhất trước; nội dung hiển thị dạng văn bản. |
+| Hành động chính | Thành viên đọc/phân trang. Chủ khóa/Admin tạo bằng `{ title, content }` và xóa sau xác nhận `ConfirmDialog`; sau thao tác thành công danh sách được tải lại. Nội dung thông báo luôn render dạng văn bản. |
+| Component | Shared: `DataState`, `Pagination`, `FormDialog`, `FormField`, `Input`, `Textarea`, `ConfirmDialog`, `Button`, `Skeleton`. Riêng M3: `AnnouncementTab`, `AnnouncementCard`, `AnnouncementForm`. |
 | Slot | Tab `announcements` trong `course-tabs.jsx`. |
 
 ## 8. Thảo luận bài học
