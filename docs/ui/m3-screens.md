@@ -49,12 +49,12 @@
 |---|---|
 | Route / vị trí | Tab `quizzes` trong `/courses/:courseId`; host tab truyền `{ courseId, course, role, isOwner }`. |
 | Vai trò | `GIANG_VIEN`, `SINH_VIEN`; hành động thay đổi theo vai trò và quyền chủ khóa. |
-| API | **Chưa có API đọc danh sách đề trong `m3.yaml`.** Đề xuất cần có GET danh sách đề theo khóa, trả `id`, `title`, `durationMinutes`, `openTime`, `closeTime`, `status` và trạng thái attempt của sinh viên. Không tự dùng truy vấn hoặc endpoint chưa được mô tả. |
+| API | `GET /api/courses/{courseId}/quizzes?page={page}&limit=20`. Chủ khóa nhận cả nháp cùng `questionCount` và `hasAttempts`; sinh viên đã ghi danh chỉ nhận đề đã công bố/đóng, `attemptStatus`, `canStart` do server tính, `visibleToStudent` và `score` chỉ khi được phép xem. |
 | Ba trạng thái | Khi API danh sách được bổ sung: **Loading** skeleton; **Error** lỗi server và thử lại; **Empty** chưa có đề; **Success** hiển thị đề, trạng thái và khung giờ. |
-| Hành động chính | Giảng viên mở trình tạo đề. Sinh viên vào phòng thi khi đề đang mở; server vẫn là quyết định cuối cùng. |
+| Hành động chính | Chủ khóa mở trình tạo đề. Sinh viên vào phòng thi khi `canStart` là true; lượt `IN_PROGRESS` có thể tiếp tục, còn server vẫn là quyết định cuối cùng. |
 | Component | Shared: `StatusBadge`, `DataState`, `DataTable`, `Pagination`, `Button`. Riêng M3: `QuizListTab`, `QuizListItem`. |
 | Slot | Mục `quizzes` trong `course-tabs.jsx`. |
-| Giới hạn API | `m3.yaml` hiện chỉ có create, replace questions, delete question, publish và các endpoint làm bài; chưa có GET quizzes. Cần bổ sung backend/OpenAPI trước khi danh sách này dùng dữ liệu thật. |
+| Giới hạn API | Phân trang dùng `page` và `limit` (tối đa 100). Sinh viên không nhận câu hỏi trong danh sách; câu hỏi và đáp án chỉ được trả cho chủ khóa qua endpoint chi tiết. |
 
 ## 4. Trình tạo và quản lý đề
 
@@ -62,12 +62,12 @@
 |---|---|
 | Route / vị trí | Trong tab `quizzes` của `/courses/:courseId`; có thể mở form/dialog từ tab. Nếu sau này tách thành route, dùng route thuộc prefix M3 và cập nhật tài liệu route trước khi code. |
 | Vai trò | `GIANG_VIEN` là người tạo/chủ khóa theo quyền của khóa; quyền được server xác nhận. |
-| API | `POST /api/courses/{courseId}/quizzes` nhận `CreateQuizRequest`: `title`, `description`, `duration_minutes`, `open_time`, `close_time`, `show_score_immediately`, `questions[]`; tạo đề nháp. `PUT /api/quizzes/{quizId}/questions` thay toàn bộ danh sách câu hỏi. `DELETE /api/questions/{questionId}` xóa câu. `POST /api/quizzes/{quizId}/publish` công bố đề. |
+| API | Tạo nháp: `POST /api/courses/{courseId}/quizzes`. Đọc danh sách chủ khóa: `GET /api/courses/{courseId}/quizzes`. Đọc đề để sửa: `GET /api/quizzes/{quizId}` (chủ khóa nhận câu hỏi và cờ `isCorrect`). Cập nhật thông tin: `PATCH /api/quizzes/{quizId}`. Thay toàn bộ câu hỏi: `PUT /api/quizzes/{quizId}/questions`. Công bố: `POST /api/quizzes/{quizId}/publish`. |
 | Ba trạng thái | **Idle/Empty:** form mới, chưa có câu hỏi; chưa thể công bố. **Loading:** đang lưu/công bố/xóa; khóa thao tác. **Error:** hiện lỗi server, gắn lỗi xác thực vào trường khi có chi tiết. **Success:** đề nháp đã lưu hoặc đề đã công bố. |
-| Hành động chính | Nhập cấu hình; thêm, xóa, sắp xếp câu hỏi; mỗi câu có 2–5 lựa chọn và đúng một đáp án đúng (BR-12, quyết định C.3); chỉ công bố khi có ít nhất một câu. Khi server trả lỗi khóa sửa do đã có lượt thi (EC-07), giữ dữ liệu đang xem và hiện thông báo từ server. |
+| Hành động chính | Nhập cấu hình; thêm, xóa, sắp xếp câu hỏi và lựa chọn; mỗi câu có 2–5 lựa chọn và đúng một đáp án đúng (BR-12, quyết định C.3). Lưu tạo đề nháp; chỉ công bố khi có ít nhất một câu. Được sửa đề đã công bố nếu chưa có lượt thi; khi đã có lượt thi thì khóa thao tác và hiện thông báo EC-07 từ server. |
 | Component | Shared: `FormField`, `Input`, `Textarea`, `DateTimeInput`, `Checkbox`, `Button`, `FormDialog`, `ConfirmDialog`, `StatusBadge`, `toast`. Riêng M3: `QuizEditor`, `QuestionEditor`, `OptionEditor`, `QuestionReorderControls`. |
 | Slot | Tab `quizzes` trong `course-tabs.jsx`. |
-| Giới hạn API | Không có GET chi tiết đề hoặc cập nhật metadata đề. `PUT .../questions` chỉ thay câu hỏi; không thể sửa `title`, thời lượng hoặc thời điểm mở/đóng bằng hợp đồng hiện tại. Xóa câu được khai báo; xóa cả đề chưa có endpoint. Cần làm rõ/bổ sung API trước khi triển khai đầy đủ chức năng sửa. |
+| Giới hạn API | Cập nhật metadata và thay câu hỏi là hai request riêng; nếu request thay câu hỏi thất bại sau khi metadata đã lưu, giao diện phải báo rõ kết quả một phần để người dùng có thể thử lại. Xóa cả đề không có endpoint. |
 
 ## 5. Phòng thi
 
