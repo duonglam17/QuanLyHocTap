@@ -18,6 +18,7 @@ const {
 } = require('../../src/contracts/fakes');
 const GradeController = require('../../src/modules/m2-assessment/controllers/gradeController');
 const GradeRepository = require('../../src/modules/m2-assessment/repositories/gradeRepository');
+const GradebookRepository = require('../../src/modules/m2-assessment/repositories/gradebookRepository');
 const GradeService = require('../../src/modules/m2-assessment/services/gradeService');
 const { createGradeRouter } = require('../../src/modules/m2-assessment/routes/gradeRoutes');
 
@@ -258,6 +259,22 @@ test('US-09 lists submissions with one batched getUsersBrief Port call', async (
   assert.equal(result.data[1].student_name, 'Student Six');
   assert.deepEqual(result.pagination, { page: 1, page_size: 2, total: 3, total_pages: 2 });
   assert.deepEqual(events, ['count', 'list']);
+});
+
+test('US-09 includes the assignment title in paginated grading rows', async () => {
+  let queryText = '';
+  const repository = new GradebookRepository({
+    async query(sql, params) {
+      queryText = sql;
+      assert.deepEqual(params, [9, 20, 0]);
+      return [[{ id: 12, assignment_title: 'Bài tập tuần 4' }], []];
+    }
+  });
+
+  const rows = await repository.findSubmissionsByCourse(9, { limit: 20, offset: 0 });
+
+  assert.match(queryText, /a\.`title` AS `assignment_title`/);
+  assert.equal(rows[0].assignment_title, 'Bài tập tuần 4');
 });
 
 test('US-09 rejects submission downloads before exposing the file to a non-owner', async () => {

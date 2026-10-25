@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Pencil, Plus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ClipboardCheck, Pencil, Plus } from 'lucide-react';
 import { useApiMutation } from '../../../shared/hooks/useApiMutation.js';
 import { useApiQuery } from '../../../shared/hooks/useApiQuery.js';
 import { formatDateTime } from '../../../shared/lib/formatters.js';
@@ -173,6 +174,7 @@ function AssignmentForm({ assignment, pending, fieldErrors, error, onSubmit, res
 }
 
 export function AssignmentTab({ courseId, course, role, isOwner = false }) {
+  const navigate = useNavigate();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingAssignment, setEditingAssignment] = useState(null);
   const [formRevision, setFormRevision] = useState(0);
@@ -236,10 +238,19 @@ export function AssignmentTab({ courseId, course, role, isOwner = false }) {
           </p>
         </div>
         {canManage ? (
-          <Button onClick={openCreateForm}>
-            <Plus aria-hidden="true" className="mr-2 size-4" />
-            Tạo bài tập
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() => navigate(`/courses/${courseId}/assignments/grading`)}
+              variant="outline"
+            >
+              <ClipboardCheck aria-hidden="true" className="mr-2 size-4" />
+              Chấm bài
+            </Button>
+            <Button onClick={openCreateForm}>
+              <Plus aria-hidden="true" className="mr-2 size-4" />
+              Tạo bài tập
+            </Button>
+          </div>
         ) : null}
       </header>
 

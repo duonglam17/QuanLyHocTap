@@ -142,6 +142,123 @@ paths:
             application/json:
               schema:
                 $ref: './common.yaml#/components/schemas/ApiError'
+  /api/courses/{courseId}/grades/submissions:
+    get:
+      tags: [M2 Assessment]
+      summary: List assignment submissions in a course for the course owner
+      operationId: listCourseSubmissionsForGrading
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Paginated assignment submissions and existing grades.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseSubmissionListResponse'
+        "401":
+          description: Authentication is required.
+        "403":
+          description: The caller is not the course owner.
+        "422":
+          description: The course ID or pagination parameters are invalid.
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ApiError'
+  /api/submissions/{submissionId}/download:
+    get:
+      tags: [M2 Assessment]
+      summary: Download a submission file as the course owner
+      operationId: downloadSubmissionForGrading
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: submissionId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Original submission file.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          description: Authentication is required.
+        "403":
+          description: The caller does not own the submission course.
+        "404":
+          description: The submission or stored file does not exist.
+  /api/submissions/{submissionId}/grade:
+    post:
+      tags: [M2 Assessment]
+      summary: Grade or update a submission grade
+      operationId: gradeSubmission
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: submissionId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [score]
+              properties:
+                score:
+                  type: number
+                  minimum: 0
+                  maximum: 10
+                  multipleOf: 0.25
+                feedback:
+                  type: string
+      responses:
+        "200":
+          description: Grade saved and submission marked as graded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GradeResponse'
+        "401":
+          description: Authentication is required.
+        "403":
+          description: The caller does not own the submission course or it is read-only.
+        "404":
+          description: The submission does not exist.
+        "422":
+          description: The score or feedback is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ApiError'
   /api/m2-assessment/courses/{courseId}/my-grades:
     get:
       tags: [M2 Assessment]
@@ -240,6 +357,81 @@ components:
         status:
           type: string
           enum: [SUBMITTED, SUBMITTED_LATE, GRADED]
+    CourseSubmissionListResponse:
+      type: object
+      required: [success, data, pagination]
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CourseSubmission'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    CourseSubmission:
+      allOf:
+        - $ref: '#/components/schemas/Submission'
+        - type: object
+          required: [student_name, score, feedback]
+          properties:
+            student_name:
+              type: string
+              nullable: true
+            assignment_title:
+              type: string
+            score:
+              type: number
+              nullable: true
+            feedback:
+              type: string
+              nullable: true
+            graded_at:
+              type: string
+              format: date-time
+              nullable: true
+    Pagination:
+      type: object
+      required: [page, page_size, total, total_pages]
+      properties:
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total:
+          type: integer
+        total_pages:
+          type: integer
+    GradeResponse:
+      type: object
+      required: [success, message, data]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/Grade'
+    Grade:
+      type: object
+      required: [id, submission_id, graded_by, score, feedback, graded_at, updated_at]
+      properties:
+        id:
+          type: integer
+        submission_id:
+          type: integer
+        graded_by:
+          type: integer
+        score:
+          type: number
+        feedback:
+          type: string
+        graded_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
     StudentGradebookResponse:
       type: object
       required: [success, data]
