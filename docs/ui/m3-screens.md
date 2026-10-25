@@ -90,14 +90,21 @@
 
 | Thuộc tính | Đặc tả |
 |---|---|
-| Route / vị trí | Kết quả sau submit; route đề xuất `/attempts/:attemptId/results`. URL này chưa được khai báo trong frontend contract, cần chốt trước khi thêm route. |
+| Route / vị trí | Kết quả hiển thị ngay sau submit trong luồng phòng thi. Route xem lại sau reload đã chốt là `/attempts/:attemptId/results`, hoãn sang C4b. |
 | Vai trò | `SINH_VIEN`, chỉ kết quả của lượt thi của mình. |
 | API | `POST /api/attempts/{attemptId}/submit` trả `AttemptSubmissionResult`: `attemptId`, `status` (`SUBMITTED` hoặc `AUTO_SUBMITTED`), `submittedAt`, `score`, `visibleToStudent`. |
 | Ba trạng thái | **Loading:** submit/đang lấy kết quả. **Error:** lỗi server, có thể thử lại submit do tính lặp an toàn. **Empty:** chưa có kết quả/lượt thi. **Success:** hiển thị điểm nếu `visibleToStudent` true; nếu false hoặc `score` null, hiển thị “Điểm sẽ được công bố sau” và trạng thái đã nộp. |
 | Hành động chính | Xem kết quả sau nộp; nếu submit lặp thì hiển thị kết quả cũ. |
 | Component | Shared: `DataState`, `StatusBadge`, `Button`; tiện ích `formatScore` từ shared lib theo frontend contract. Riêng M3: `AttemptResultPanel`. |
 | Slot | Route M3 riêng sau phòng thi. |
-| Giới hạn API | Chưa có GET kết quả/lượt thi hoặc API xem lại câu trả lời. Sau reload không thể tải lại kết quả từ endpoint hiện có; chức năng “xem lại lượt thi” cần backend/API bổ sung. Không hiển thị đáp án đúng. |
+| Giới hạn API | Hiện chỉ có POST submit; chưa có GET kết quả/lượt thi hoặc API xem lại câu trả lời. Sau reload chưa thể tải kết quả. Không hiển thị đáp án đúng. |
+
+### Hoãn sang C4b — xem lại kết quả sau khi tải lại
+
+- Route đã chốt: `/attempts/:attemptId/results`.
+- API dự kiến: `GET /api/attempts/{attemptId}/result`. Chỉ triển khai route và gọi API sau khi backend M3 bổ sung endpoint; không suy diễn schema trước khi OpenAPI được cập nhật.
+- Các trạng thái cần hỗ trợ: đang làm, đã nộp, chưa công bố điểm, đã công bố điểm và không có quyền.
+- Phần C4 hiện tại chỉ hiển thị kết quả ngay sau submit từ `AttemptSubmissionResult`; không thêm route hoặc API xem lại trong bước này.
 
 ## 7. Bảng tin khóa học
 

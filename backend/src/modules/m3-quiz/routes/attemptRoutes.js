@@ -2,6 +2,7 @@ const express = require('express');
 const common = require('../../../common');
 const createAttemptController = require('../controllers/attemptController');
 const {
+  attemptResultSchema,
   startAttemptSchema,
   saveAnswerSchema,
   submitAttemptSchema
@@ -11,7 +12,17 @@ function createAttemptRoutes(service) {
   const router = express.Router();
   const controller = createAttemptController(service);
   const studentOnly = [common.requireAuth, common.requireRole(['SINH_VIEN'])];
+  const resultReaders = [
+    common.requireAuth,
+    common.requireRole(['SINH_VIEN', 'GIANG_VIEN'])
+  ];
 
+  router.get(
+    '/attempts/:attemptId/result',
+    ...resultReaders,
+    common.validate(attemptResultSchema),
+    controller.getResult
+  );
   router.post(
     '/quizzes/:quizId/start',
     ...studentOnly,

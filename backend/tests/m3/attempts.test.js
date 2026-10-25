@@ -20,6 +20,7 @@ const {
 } = require('../../src/modules/m3-quiz/services/attemptService');
 const {
   startAttemptSchema,
+  attemptResultSchema,
   saveAnswerSchema
 } = require('../../src/modules/m3-quiz/validators/attemptSchemas');
 
@@ -42,12 +43,31 @@ function createAttempt(overrides = {}) {
     quizCloseTime: new Date('2026-11-25T02:00:00.000Z'),
     quizStatus: 'PUBLISHED',
     score: null,
+    correctAnswersCount: null,
+    totalQuestions: null,
     submittedAt: null,
     ...overrides
   };
 }
 
-function createService({ initialAttempt = null, clockNow = now } = {}) {
+function collectObjectKeys(value) {
+  if (Array.isArray(value)) {
+    return value.flatMap(collectObjectKeys);
+  }
+  if (value && typeof value === 'object') {
+    return Object.entries(value).flatMap(([key, child]) => [
+      key,
+      ...collectObjectKeys(child)
+    ]);
+  }
+  return [];
+}
+
+function createService({
+  initialAttempt = null,
+  clockNow = now,
+  courseStatus = 'PUBLISHED'
+} = {}) {
   let attempt = initialAttempt && { ...initialAttempt };
   let nextAttemptId = 71;
   let savedAnswers = [{ questionId: 9, optionId: 92 }];
@@ -64,6 +84,7 @@ function createService({ initialAttempt = null, clockNow = now } = {}) {
   const quiz = {
     id: 5,
     courseId: 8,
+    title: 'Quiz',
     durationMinutes: 30,
     openTime: new Date('2026-11-25T00:00:00.000Z'),
     closeTime: new Date('2026-11-25T02:00:00.000Z'),
@@ -78,6 +99,27 @@ function createService({ initialAttempt = null, clockNow = now } = {}) {
     },
     async findAttemptById() {
       return attempt && { ...attempt };
+    },
+    async findAttemptResultById() {
+      if (!attempt) return null;
+      return {
+        attemptId: attempt.id,
+        studentId: attempt.studentId,
+        quizId: attempt.quizId,
+        courseId: quiz.courseId,
+        quizTitle: quiz.title,
+        status: attempt.status,
+        startedAt: attempt.startedAt,
+        submittedAt: attempt.submittedAt,
+        expiresAt: attempt.expiresAt,
+        totalQuestions: attempt.totalQuestions ?? 4,
+        answeredCount: savedAnswers.length,
+        score: attempt.score,
+        correctAnswersCount: attempt.correctAnswersCount,
+        showScoreImmediately: attempt.showScoreImmediately,
+        quizStatus: attempt.quizStatus,
+        quizCloseTime: attempt.quizCloseTime
+      };
     },
     async findAttemptForUpdate() {
       return attempt && { ...attempt };
@@ -157,7 +199,10 @@ function createService({ initialAttempt = null, clockNow = now } = {}) {
   };
   const courseAccess = {
     async getCourse(courseId) {
-      return { id: courseId, status: 'PUBLISHED' };
+      return { id: courseId, status: courseStatus };
+    },
+    async isOwner(userId, courseId) {
+      return userId === 90 && courseId === 8;
     },
     async isEnrolled(studentId, courseId) {
       return studentId === 12 && courseId === 8;
@@ -435,6 +480,171 @@ test('manual submit after expiry is auto-submitted and score visibility follows 
   assert.equal(getAttempt().score, 7.5);
 });
 
+test('student can read their own submitted result without question or answer-key data', async () => {
+  const { service } = createService({
+    initialAttempt: createAttempt({
+      status: 'SUBMITTED',
+      submittedAt: now,
+      totalQuestions: 4,
+      correctAnswersCount: 3,
+      score: 7.5
+    })
+  });
+
+  const result = await service.getAttemptResult(71, 12, 'SINH_VIEN');
+
+  assert.deepEqual(result, {
+    attemptId: 71,
+    quizId: 5,
+    quizTitle: 'Quiz',
+    status: 'SUBMITTED',
+    startedAt: '2026-11-25T00:30:00.000Z',
+    submittedAt: '2026-11-25T01:00:00.000Z',
+    expiresAt: '2026-11-25T01:30:00.000Z',
+    totalQuestions: 4,
+    answeredCount: 1,
+    visibleToStudent: true,
+    maxScore: 10,
+    score: 7.5,
+    correctCount: 3
+  });
+  const resultKeys = collectObjectKeys(result);
+  assert.equal(
+    resultKeys.some((key) =>
+      ['isCorrect', 'is_correct', 'correct', 'correctOptionId'].includes(key)
+    ),
+    false
+  );
+  assert.equal(resultKeys.includes('content'), false);
+  assert.doesNotMatch(JSON.stringify(result), /Hai cộng hai bằng mấy/);
+});
+
+test('student cannot read another student result and other instructors cannot read it', async () => {
+  const { service } = createService({
+    initialAttempt: createAttempt({
+      status: 'SUBMITTED',
+      submittedAt: now,
+      score: 7.5,
+      correctAnswersCount: 3
+    })
+  });
+
+  await assert.rejects(
+    service.getAttemptResult(71, 13, 'SINH_VIEN'),
+    (error) => error.statusCode === 403
+  );
+  await assert.rejects(
+    service.getAttemptResult(71, 91, 'GIANG_VIEN'),
+    (error) => error.statusCode === 403
+  );
+});
+
+test('course owner can read an attempt result without requiring a writable course', async () => {
+  const { service } = createService({
+    initialAttempt: createAttempt({
+      status: 'SUBMITTED',
+      submittedAt: now,
+      score: 7.5,
+      correctAnswersCount: 3
+    }),
+    courseStatus: 'ARCHIVED'
+  });
+
+  const result = await service.getAttemptResult(71, 90, 'GIANG_VIEN');
+
+  assert.equal(result.attemptId, 71);
+  assert.equal(result.score, 7.5);
+});
+
+test('missing attempt result returns not found', async () => {
+  const { service } = createService();
+
+  await assert.rejects(
+    service.getAttemptResult(999, 12, 'SINH_VIEN'),
+    (error) => error.statusCode === 404
+  );
+});
+
+test('hidden score returns null score and correctCount', async () => {
+  const { service } = createService({
+    initialAttempt: createAttempt({
+      status: 'SUBMITTED',
+      submittedAt: now,
+      showScoreImmediately: false,
+      score: 7.5,
+      correctAnswersCount: 3
+    })
+  });
+
+  const result = await service.getAttemptResult(71, 12, 'SINH_VIEN');
+
+  assert.equal(result.visibleToStudent, false);
+  assert.equal(result.score, null);
+  assert.equal(result.correctCount, null);
+});
+
+test('in-progress result contains counts but no selected answers or score', async () => {
+  const { service } = createService({ initialAttempt: createAttempt() });
+
+  const result = await service.getAttemptResult(71, 12, 'SINH_VIEN');
+
+  assert.equal(result.status, 'IN_PROGRESS');
+  assert.equal(result.score, null);
+  assert.equal(result.correctCount, null);
+  assert.equal(result.totalQuestions, 4);
+  assert.equal(result.answeredCount, 1);
+  assert.equal(Object.hasOwn(result, 'savedAnswers'), false);
+});
+
+test('reading an expired in-progress result lazily grades once and remains idempotent', async () => {
+  const { service, getAttempt, getGradingCount } = createService({
+    initialAttempt: createAttempt({
+      expiresAt: new Date(now.getTime() - 1000)
+    })
+  });
+
+  const first = await service.getAttemptResult(71, 12, 'SINH_VIEN');
+  const repeated = await service.getAttemptResult(71, 12, 'SINH_VIEN');
+
+  assert.equal(first.status, 'AUTO_SUBMITTED');
+  assert.equal(first.score, 7.5);
+  assert.equal(first.correctCount, 3);
+  assert.deepEqual(repeated, first);
+  assert.equal(getAttempt().status, 'AUTO_SUBMITTED');
+  assert.equal(getGradingCount(), 1);
+});
+
+test('attempt result repository reads only attempt and quiz metadata with aggregate counts', async () => {
+  let query;
+  const repository = createAttemptRepository({
+    async query(sql, values) {
+      query = { sql, values };
+      return [[{
+        attemptId: 71,
+        studentId: 12,
+        quizId: 5,
+        courseId: 8,
+        quizTitle: 'Quiz',
+        status: 'SUBMITTED',
+        totalQuestions: 4,
+        answeredCount: 1,
+        score: '7.50',
+        correctAnswersCount: 3,
+        showScoreImmediately: 1,
+        quizStatus: 'PUBLISHED'
+      }]];
+    }
+  });
+
+  const result = await repository.findAttemptResultById('71');
+
+  assert.equal(query.values[0], '71');
+  assert.match(query.sql, /SELECT COUNT\(\*\)/);
+  assert.match(query.sql, /FROM attempt_answers/);
+  assert.doesNotMatch(query.sql, /q\.content|o\.content|is_correct|correct_option/i);
+  assert.equal(result.attemptId, 71);
+});
+
 test('expired save-answer lazily auto-submits before returning a conflict', async () => {
   const { service, getAttempt, getGradingCount } = createService({
     initialAttempt: createAttempt(),
@@ -689,6 +899,70 @@ test('start and save-answer schemas expose the approved session fields', () => {
     }).success,
     true
   );
+});
+
+test('attempt result schema validates only a positive attempt id', () => {
+  assert.equal(
+    attemptResultSchema.safeParse({ params: { attemptId: '71' } }).success,
+    true
+  );
+  assert.equal(
+    attemptResultSchema.safeParse({ params: { attemptId: '0' } }).success,
+    false
+  );
+});
+
+test('attempt result route requires authentication and allows students and instructors', async () => {
+  const calls = [];
+  const service = {
+    async getAttemptResult(...args) {
+      calls.push(args);
+      return { attemptId: 71, status: 'IN_PROGRESS', score: null };
+    }
+  };
+  const app = express();
+  app.use(express.json());
+  app.use('/api', createAttemptRoutes(service));
+  app.use(errorHandler);
+  const originalQuery = db.query;
+  db.query = async () => [[{ status: 'ACTIVE', token_version: 1 }]];
+
+  function authorization(role, userId) {
+    const token = jwt.sign(
+      { user_id: userId, role, token_version: 1 },
+      config.JWT_SECRET
+    );
+    return `Bearer ${token}`;
+  }
+
+  try {
+    const unauthorized = await request(app).get('/api/attempts/71/result');
+    assert.equal(unauthorized.status, 401);
+
+    const studentResponse = await request(app)
+      .get('/api/attempts/71/result')
+      .set('Authorization', authorization('SINH_VIEN', 12));
+    assert.equal(studentResponse.status, 200);
+    assert.deepEqual(studentResponse.body, {
+      attemptId: 71,
+      status: 'IN_PROGRESS',
+      score: null
+    });
+    assert.deepEqual(calls[0], ['71', 12, 'SINH_VIEN']);
+
+    const instructorResponse = await request(app)
+      .get('/api/attempts/71/result')
+      .set('Authorization', authorization('GIANG_VIEN', 90));
+    assert.equal(instructorResponse.status, 200);
+    assert.deepEqual(calls[1], ['71', 90, 'GIANG_VIEN']);
+
+    const invalidId = await request(app)
+      .get('/api/attempts/0/result')
+      .set('Authorization', authorization('SINH_VIEN', 12));
+    assert.equal(invalidId.status, 422);
+  } finally {
+    db.query = originalQuery;
+  }
 });
 
 test('attempt routes apply defaults and return only the 409 error envelope on session conflicts', async () => {

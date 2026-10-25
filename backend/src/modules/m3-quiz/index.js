@@ -94,6 +94,9 @@ router.use(createAttemptRoutes({
   },
   submitAttempt(...args) {
     return attemptService.submitAttempt(...args);
+  },
+  getAttemptResult(...args) {
+    return attemptService.getAttemptResult(...args);
   }
 }));
 router.use(createAnnouncementRoutes({

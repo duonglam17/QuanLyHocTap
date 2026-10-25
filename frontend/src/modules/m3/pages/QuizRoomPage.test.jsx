@@ -267,4 +267,31 @@ describe('QuizRoomPage', () => {
     });
     expect(await screen.findByText('Điểm: 8')).toBeInTheDocument();
   });
+
+  it('renders an idempotent prior submission result without revealing a hidden score', async () => {
+    vi.mocked(api.post).mockImplementation((path) => {
+      if (path.endsWith('/start')) return Promise.resolve(createSession());
+      return Promise.resolve({
+        attemptId: 101,
+        status: 'SUBMITTED',
+        submittedAt: '2030-12-01T01:15:00.000Z',
+        score: null,
+        visibleToStudent: false
+      });
+    });
+    const user = userEvent.setup();
+    renderRoom();
+
+    await screen.findByRole('group', { name: /Hai cộng hai bằng mấy/ });
+    await user.click(screen.getByRole('button', { name: 'Nộp bài' }));
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Nộp bài' }));
+
+    expect(await screen.findByText('Đã nộp bài thi')).toBeInTheDocument();
+    expect(screen.getByText('Điểm sẽ được công bố sau.')).toBeInTheDocument();
+    expect(screen.queryByText(/Điểm:/)).not.toBeInTheDocument();
+    expect(api.post).toHaveBeenCalledWith('/attempts/101/submit', {
+      clientInstanceId: instanceId,
+      sessionToken: 'session-token-1'
+    });
+  });
 });
