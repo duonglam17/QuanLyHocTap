@@ -119,10 +119,10 @@
 | Vai trò | Sinh viên đã ghi danh và chủ khóa; API hiện cho phép role `SINH_VIEN`, `GIANG_VIEN`, còn quyền khóa học được server kiểm tra. |
 | API | `GET /api/lessons/{lessonId}/comments?page={page}&limit={limit}` trả `DiscussionPage`; `POST` cùng path tạo chủ đề `{ content }`; `POST /api/comments/{commentId}/replies` tạo trả lời `{ content }`. |
 | Ba trạng thái | **Loading:** skeleton chủ đề và trả lời. **Error:** lỗi server và thử lại. **Empty:** trạng thái rỗng khuyến khích đặt câu hỏi đầu tiên. **Success:** danh sách chủ đề phân trang, hiển thị tác giả/thời gian và trả lời. Nội dung render văn bản để chống Stored XSS (BR-18, EC-11). |
-| Hành động chính | Tạo bình luận hoặc trả lời chủ đề; sau thành công cập nhật danh sách. |
-| Component | Shared: `DataState`, `Pagination`, `FormField`, `Textarea`, `Button`, `Avatar`. Riêng M3: `DiscussionSection`, `DiscussionThread`, `DiscussionComposer`, `ReplyComposer`. |
+| Hành động chính | Sinh viên và giảng viên có quyền truy cập bài học tạo bình luận hoặc trả lời chủ đề; nội dung sau khi gửi render dạng văn bản. Phân trang danh sách chủ đề gốc. |
+| Component | Shared: `DataState`, `Pagination`, `FormField`, `Textarea`, `Button`, `Skeleton`. Riêng M3: `DiscussionSection`, `DiscussionThread`, `DiscussionComposer`, `DiscussionReply`. |
 | Slot | Phần `discussion` trong `lesson-sections.jsx`. |
-| Giới hạn API | C6 yêu cầu xóa bình luận theo quyền nhưng `m3.yaml` chưa có DELETE endpoint hoặc quy tắc quyền xóa. Không tự hiển thị/xử lý xóa cho đến khi API được bổ sung. |
+| Giới hạn API | `m3.yaml` hiện chưa có DELETE bình luận hoặc quy tắc quyền xóa; C6 chỉ triển khai đọc, tạo bình luận và trả lời. Không tạo nút xóa hay gọi endpoint chưa có trong hợp đồng. |
 
 ## Vấn đề hợp đồng cần xử lý trước các bước code liên quan
 
@@ -132,7 +132,7 @@
 | Danh sách đề | Không có GET list/detail. | Không thể dựng dữ liệu thật cho tab `quizzes`, cho cả giảng viên và sinh viên. |
 | Trình tạo/chỉnh sửa đề | Không có API đọc đề để sửa, cập nhật metadata, hoặc xóa đề. | Tạo đề và sửa/thay câu hỏi tách biệt được; sửa tiêu đề/thời lượng/cửa sổ đề không khả thi đầy đủ. |
 | Kết quả/xem lại | Chỉ submit trả kết quả; không có GET result/attempt review. | Hiển thị kết quả ngay sau submit được; mở lại kết quả sau reload và xem lại lượt thi chưa được hỗ trợ. |
-| Thảo luận | Không có DELETE bình luận. | Chức năng xóa trong yêu cầu C6 cần backend bổ sung endpoint và quy tắc quyền. |
+| Thảo luận | Không có DELETE bình luận. | Chức năng xóa theo quyền cần backend bổ sung endpoint và quy tắc quyền; frontend không giả định API này. |
 
 Các điểm thiếu trên cần người phụ trách backend B/C thống nhất và cập nhật OpenAPI/API trong phạm vi sở hữu trước khi bước frontend tương ứng triển khai. Không thay đổi contract hoặc tự giả định endpoint trong Bước 0.
 
