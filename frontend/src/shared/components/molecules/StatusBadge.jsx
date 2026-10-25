@@ -21,7 +21,6 @@ const statusLabels = {
     SUBMITTED: ['Đã nộp', 'success'],
     SUBMITTED_LATE: ['Nộp trễ', 'warning'],
     GRADED: ['Đã chấm', 'default'],
-    NOT_SUBMITTED: ['Chưa nộp', 'outline']
   },
   attempt: {
     IN_PROGRESS: ['Đang làm', 'warning'],
