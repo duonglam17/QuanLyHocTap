@@ -1,17 +1,11 @@
-import { M2PlaceholderPage } from '../pages/M2PlaceholderPage.jsx';
+import { CourseAssignmentsPage } from '../pages/CourseAssignmentsPage.jsx';
 
 export const routes = [
   {
-    path: '/m2',
+    path: '/courses/:courseId/assignments',
     roles: ['GIANG_VIEN', 'SINH_VIEN'],
     layout: 'default',
     public: false,
-    nav: {
-      label: 'Bài tập và điểm',
-      icon: 'ClipboardList',
-      order: 30,
-      group: 'main'
-    },
-    element: <M2PlaceholderPage />
+    element: <CourseAssignmentsPage />
   }
 ];

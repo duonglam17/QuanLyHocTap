@@ -13,6 +13,10 @@ const {
 const logger = require('../../../common/logger');
 const { sanitizeText } = require('../utils/sanitizer');
 
+function invalidField(field, message) {
+  return new ValidationError(message, [{ field, message }]);
+}
+
 class AssignmentService {
   constructor({
     assignmentRepository,
@@ -45,6 +49,29 @@ class AssignmentService {
     }
     if (!(await courseAccessPort.isOwner(instructorId, courseId))) {
       throw new ForbiddenError('Chỉ chủ khóa học mới có quyền thực hiện thao tác này (BR-03).');
+    }
+  }
+
+  async _assertCourseMember(courseId, userId, courseAccessPort) {
+    if (
+      !userId ||
+      !courseAccessPort ||
+      typeof courseAccessPort.getCourse !== 'function' ||
+      typeof courseAccessPort.isOwner !== 'function' ||
+      typeof courseAccessPort.isEnrolled !== 'function'
+    ) {
+      throw new ForbiddenError('Không thể xác minh quyền truy cập khóa học.');
+    }
+
+    const course = await courseAccessPort.getCourse(courseId);
+    if (!course) {
+      throw new NotFoundError('Không tìm thấy khóa học yêu cầu.');
+    }
+    if (
+      !(await courseAccessPort.isOwner(userId, courseId)) &&
+      !(await courseAccessPort.isEnrolled(userId, courseId))
+    ) {
+      throw new ForbiddenError('Bạn không phải chủ khóa hoặc sinh viên đã ghi danh.');
     }
   }
 
@@ -105,55 +132,58 @@ class AssignmentService {
     // 1. Kiểm tra tham số cơ bản
     const numericCourseId = Number(courseId);
     if (!Number.isSafeInteger(numericCourseId) || numericCourseId <= 0) {
-      throw new ValidationError('Mã khóa học (courseId) là bắt buộc.');
+      throw invalidField('courseId', 'Mã khóa học là bắt buộc.');
     }
     if (!instructorId) {
       throw new ForbiddenError('Yêu cầu định danh giảng viên.');
     }
     if (!title || typeof title !== 'string' || title.trim() === '') {
-      throw new ValidationError('Tiêu đề bài tập không được để trống.');
+      throw invalidField('title', 'Tiêu đề bài tập không được để trống.');
     }
 
     // 2. Sanitize tiêu đề và mô tả (BR-18)
     const sanitizedTitle = sanitizeText(title);
+    if (typeof description !== 'string') {
+      throw invalidField('description', 'Mô tả bài tập phải là chuỗi ký tự.');
+    }
     const sanitizedDescription = sanitizeText(description);
 
     if (typeof sanitizedDescription !== 'string') {
-      throw new ValidationError('Mô tả bài tập phải là chuỗi ký tự.');
+      throw invalidField('description', 'Mô tả bài tập phải là chuỗi ký tự.');
     }
     if (sanitizedTitle.length === 0) {
-      throw new ValidationError('Tiêu đề bài tập không hợp lệ sau khi làm sạch.');
+      throw invalidField('title', 'Tiêu đề bài tập không hợp lệ sau khi làm sạch.');
     }
     if (sanitizedTitle.length > 200) {
-      throw new ValidationError('Tiêu đề bài tập không được vượt quá 200 ký tự.');
+      throw invalidField('title', 'Tiêu đề bài tập không được vượt quá 200 ký tự.');
     }
 
     // 3. Kiểm tra hạn nộp (due_date phải sau clock.now())
     const targetDueDate = dueDate || deadline;
     if (!targetDueDate) {
-      throw new ValidationError('Hạn nộp bài tập (due_date) là bắt buộc.');
+      throw invalidField('due_date', 'Hạn nộp bài tập là bắt buộc.');
     }
 
     const dueDateObj = new Date(targetDueDate);
     if (isNaN(dueDateObj.getTime())) {
-      throw new ValidationError('Hạn nộp bài tập không đúng định dạng thời gian.');
+      throw invalidField('due_date', 'Hạn nộp bài tập không đúng định dạng thời gian.');
     }
 
     const currentTime = this.clock.now();
     if (dueDateObj <= currentTime) {
-      throw new ValidationError('Hạn nộp bài tập (due_date) phải sau thời điểm hiện tại.');
+      throw invalidField('due_date', 'Hạn nộp bài tập phải sau thời điểm hiện tại.');
     }
 
     // 4. Kiểm tra thang điểm (Mặc định 10.0, trong khoảng [0.25, 10.0])
     const numericMaxScore = maxScore !== undefined && maxScore !== null ? Number(maxScore) : 10.0;
     if (isNaN(numericMaxScore) || numericMaxScore <= 0 || numericMaxScore > 10.0) {
-      throw new ValidationError('Điểm tối đa (max_score) phải là số dương và không vượt quá 10.0.');
+      throw invalidField('max_score', 'Điểm tối đa phải lớn hơn 0 và không vượt quá 10.');
     }
 
     const lateSubmissionFlag =
       allowLateSubmission !== undefined ? allowLateSubmission : allowLate;
     if (typeof lateSubmissionFlag !== 'boolean') {
-      throw new ValidationError('Cờ cho phép nộp trễ phải là giá trị boolean.');
+      throw invalidField('allow_late_submission', 'Cho phép nộp trễ phải là giá trị có/không.');
     }
     const finalAllowLate = lateSubmissionFlag;
 
@@ -215,11 +245,92 @@ class AssignmentService {
   /**
    * Lấy danh sách bài tập theo khóa học
    */
-  async getAssignmentsByCourseId(courseId) {
-    if (!courseId) {
-      throw new ValidationError('Mã khóa học (courseId) là bắt buộc.');
+  async getAssignmentsByCourseId(courseId, user) {
+    if (!Number.isSafeInteger(Number(courseId)) || Number(courseId) <= 0) {
+      throw invalidField('courseId', 'Mã khóa học là bắt buộc.');
     }
-    return this.assignmentRepository.findByCourseId(courseId);
+
+    const courseAccessPort = this.getPort('courseAccess', { optional: true });
+    await this._assertCourseMember(Number(courseId), user?.id, courseAccessPort);
+    return this.assignmentRepository.findByCourseId(courseId, {
+      studentId: user?.role === 'SINH_VIEN' ? user.id : null
+    });
+  }
+
+  async updateAssignment(assignmentId, instructorId, changes) {
+    const assignment = await this.getAssignmentById(assignmentId);
+    const courseAccessPort = this.getPort('courseAccess', { optional: true });
+    await this._assertCourseOwner(assignment.courseId, instructorId, courseAccessPort);
+    await this._assertCourseWritable(assignment.courseId, courseAccessPort);
+
+    const update = {};
+    if (Object.hasOwn(changes, 'title')) {
+      if (typeof changes.title !== 'string' || changes.title.trim() === '') {
+        throw invalidField('title', 'Tiêu đề bài tập không được để trống.');
+      }
+      const title = sanitizeText(changes.title);
+      if (!title || title.length > 200) {
+        throw invalidField('title', 'Tiêu đề bài tập phải có tối đa 200 ký tự.');
+      }
+      update.title = title;
+    }
+    if (Object.hasOwn(changes, 'description')) {
+      if (typeof changes.description !== 'string') {
+        throw invalidField('description', 'Mô tả bài tập phải là chuỗi ký tự.');
+      }
+      update.description = sanitizeText(changes.description);
+    }
+    if (Object.hasOwn(changes, 'dueDate')) {
+      const dueDate = new Date(changes.dueDate);
+      if (Number.isNaN(dueDate.getTime())) {
+        throw invalidField('due_date', 'Hạn nộp bài tập không đúng định dạng thời gian.');
+      }
+      const previousDueDate = new Date(assignment.dueDate);
+      if (
+        dueDate.getTime() !== previousDueDate.getTime() &&
+        dueDate.getTime() <= this.clock.now().getTime()
+      ) {
+        throw invalidField('due_date', 'Hạn nộp bài tập phải sau thời điểm hiện tại.');
+      }
+      update.dueDate = dueDate;
+    }
+    if (Object.hasOwn(changes, 'maxScore')) {
+      const maxScore = Number(changes.maxScore);
+      if (!Number.isFinite(maxScore) || maxScore <= 0 || maxScore > 10) {
+        throw invalidField('max_score', 'Điểm tối đa phải lớn hơn 0 và không vượt quá 10.');
+      }
+      update.maxScore = maxScore;
+    }
+    if (Object.hasOwn(changes, 'allowLateSubmission')) {
+      if (typeof changes.allowLateSubmission !== 'boolean') {
+        throw invalidField('allow_late_submission', 'Cho phép nộp trễ phải là giá trị có/không.');
+      }
+      update.allowLateSubmission = changes.allowLateSubmission;
+    }
+    if (Object.keys(update).length === 0) {
+      throw invalidField('assignment', 'Cần cung cấp ít nhất một trường để cập nhật.');
+    }
+
+    const updatedFields = {
+      title: update.title ?? assignment.title,
+      description: update.description ?? assignment.description,
+      dueDate: update.dueDate ?? assignment.dueDate,
+      maxScore: update.maxScore ?? assignment.maxScore,
+      allowLateSubmission:
+        update.allowLateSubmission ?? assignment.allowLateSubmission
+    };
+
+    return this._withTransaction(async (connection) => {
+      const updated = await this.assignmentRepository.update(
+        assignment.id,
+        updatedFields,
+        connection
+      );
+      if (!updated) {
+        throw new NotFoundError('Không tìm thấy bài tập yêu cầu.');
+      }
+      return this.assignmentRepository.findById(assignment.id, connection);
+    });
   }
 
   /**

@@ -8,6 +8,113 @@ servers:
 tags:
   - name: M2 Assessment
 paths:
+  /api/courses/{courseId}/assignments:
+    parameters:
+      - name: courseId
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    get:
+      tags: [M2 Assessment]
+      summary: List assignments for a course accessible to the authenticated owner or enrolled student
+      operationId: getCourseAssignments
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Assignments ordered by deadline and ID. Student responses include their submission status.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, count, data]
+                properties:
+                  success:
+                    type: boolean
+                  count:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Assignment'
+        "401":
+          description: Authentication is required.
+        "403":
+          description: Caller is not the course owner or an enrolled student.
+        "404":
+          description: Course not found.
+    post:
+      tags: [M2 Assessment]
+      summary: Create an assignment in an instructor-owned writable course
+      operationId: createAssignment
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignmentInput'
+      responses:
+        "201":
+          description: Assignment created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentMutationResponse'
+        "401":
+          description: Authentication is required.
+        "403":
+          description: Caller is not the course owner or the course is read-only.
+        "404":
+          description: Course not found.
+        "422":
+          description: Assignment input is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ApiError'
+  /api/assignments/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    patch:
+      tags: [M2 Assessment]
+      summary: Update assignment fields in an instructor-owned writable course
+      operationId: updateAssignment
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignmentUpdate'
+      responses:
+        "200":
+          description: Assignment updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentMutationResponse'
+        "401":
+          description: Authentication is required.
+        "403":
+          description: Caller is not the course owner or the course is read-only.
+        "404":
+          description: Assignment not found.
+        "422":
+          description: Assignment input is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ApiError'
   /api/m2-assessment/courses/{courseId}/my-grades:
     get:
       tags: [M2 Assessment]
@@ -43,6 +150,102 @@ components:
       scheme: bearer
       bearerFormat: JWT
   schemas:
+    AssignmentInput:
+      type: object
+      required: [title, due_date]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          default: ""
+        due_date:
+          type: string
+          format: date-time
+          description: Must be in the future according to server time.
+        max_score:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          maximum: 10
+          default: 10
+        allow_late_submission:
+          type: boolean
+          default: false
+    AssignmentUpdate:
+      type: object
+      description: Send only fields to update. At least one property is required.
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+        due_date:
+          type: string
+          format: date-time
+          description: A changed deadline must be in the future according to server time.
+        max_score:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          maximum: 10
+        allow_late_submission:
+          type: boolean
+    AssignmentMutationResponse:
+      type: object
+      required: [success, message, data]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/Assignment'
+    Assignment:
+      type: object
+      required:
+        [id, course_id, title, description, due_date, deadline, max_score, allow_late_submission, status]
+      properties:
+        id:
+          type: integer
+        course_id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        due_date:
+          type: string
+          format: date-time
+        deadline:
+          type: string
+          format: date-time
+        max_score:
+          type: number
+        allow_late_submission:
+          type: boolean
+        submission_status:
+          type: string
+          nullable: true
+          enum: [SUBMITTED, SUBMITTED_LATE, GRADED]
+        status:
+          type: string
+          enum: [OPEN, CLOSED]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
     StudentGradebookResponse:
       type: object
       required: [success, data]
