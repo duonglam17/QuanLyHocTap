@@ -46,10 +46,11 @@ Mỗi tệp `modules/mX/routes/*.jsx` export mảng `routes`. Router tự nạp 
   roles: ['ADMIN','GIANG_VIEN','SINH_VIEN'],   // bắt buộc; [] nghĩa là chỉ cần đăng nhập
   public: false,                          // true: không cần đăng nhập (ví dụ /login)
   layout: 'default',                      // 'default' (có menu) hoặc 'bare' (toàn màn hình, dùng cho phòng thi và đăng nhập)
-  nav: { label: 'Khóa học', icon: 'BookOpen', order: 10, group: 'main' }   // tùy chọn; không có thì không hiện ở menu
+  nav: { label: 'Khóa học', icon: 'BookOpen', order: 10, group: 'main' },  // tùy chọn; không có thì không hiện ở menu
+  homeFor: ['SINH_VIEN']                  // tùy chọn; vai trò ưu tiên route này làm trang mặc định
 }
 ```
-Người dùng thiếu quyền vào route: trang 403. Chưa đăng nhập: chuyển về `/login` và quay lại trang cũ sau khi đăng nhập.
+Route public không cần khai báo `roles`. Trang mặc định chọn route đầu tiên có `homeFor` chứa vai trò; nếu không có, chọn route truy cập được có `nav.order` nhỏ nhất; nếu vẫn không có, chọn route truy cập được đầu tiên. Người dùng thiếu quyền vào route: trang 403. Chưa đăng nhập: chuyển về `/login` và quay lại trang cũ sau khi đăng nhập.
 
 ## 4. Slot (cách module đóng góp vào trang của module khác mà không import nhau)
 Mỗi slot được nạp bằng `import.meta.glob` với mẫu đường dẫn cố định:
@@ -79,7 +80,7 @@ useAuth() -> { user: { id, fullName, username, role } | null, status: 'loading'|
                login(username, password), logout(), hasRole(...roles) }
 <RequireAuth roles={[...]}>...</RequireAuth>
 ```
-Cách lưu token và làm mới phiên theo ADR trong `docs/architecture.md`. Trang đăng nhập do M1 viết, dùng `login` của `useAuth`.
+Cách lưu token và làm mới phiên theo ADR trong `docs/architecture.md`. Trang đăng nhập do M1 viết, dùng `login` của `useAuth`; trang đăng nhập của app được giữ làm dự phòng tạm thời khi module chưa khai báo `/login`. Khi bị chuyển về đăng nhập, đường dẫn chờ lưu tại `location.state.from`; sau đăng nhập ưu tiên quay lại đường dẫn này, nếu không có thì về trang mặc định. Dùng helper `getSafeRedirectPath(path)` từ `shared/lib` để chỉ chấp nhận đường dẫn nội bộ.
 
 ## 7. Dữ liệu và 3 trạng thái
 ```

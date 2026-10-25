@@ -4,12 +4,16 @@ import { Button } from '../../shared/components/atoms/Button.jsx';
 import { FormField } from '../../shared/components/molecules/FormField.jsx';
 import { Input } from '../../shared/components/atoms/Input.jsx';
 import { useAuth } from '../../shared/auth/useAuth.js';
+import { getSafeRedirectPath } from '../../shared/lib/index.js';
 
-function safeReturnPath(from) {
-  const path = typeof from === 'string' ? from : from?.pathname;
-  if (!path?.startsWith('/') || path.startsWith('//') || path === '/login') return '/';
-  if (typeof from === 'string') return path;
-  return `${path}${from.search || ''}${from.hash || ''}`;
+function getReturnPath(from) {
+  const path = typeof from === 'string'
+    ? from
+    : from?.pathname
+      ? `${from.pathname}${from.search || ''}${from.hash || ''}`
+      : null;
+  const safePath = getSafeRedirectPath(path);
+  return safePath && safePath !== '/login' ? safePath : '/';
 }
 
 export function LoginPage() {
@@ -29,7 +33,7 @@ export function LoginPage() {
     );
   }
   if (status === 'authenticated') {
-    return <Navigate replace to={safeReturnPath(location.state?.from)} />;
+    return <Navigate replace to={getReturnPath(location.state?.from)} />;
   }
 
   async function handleSubmit(event) {
@@ -38,7 +42,7 @@ export function LoginPage() {
     setSubmitting(true);
     try {
       await login(username, password);
-      navigate(safeReturnPath(location.state?.from), { replace: true });
+      navigate(getReturnPath(location.state?.from), { replace: true });
     } catch (loginError) {
       setError(loginError.message);
     } finally {

@@ -9,10 +9,13 @@ export function discoverModuleRoutes(routeModules) {
         if (!route || typeof route.path !== 'string' || !route.path.startsWith('/')) {
           throw new TypeError(`Routes in "${filePath}" must have an absolute path.`);
         }
-        if (!Array.isArray(route.roles)) {
+        if (route.roles !== undefined && !Array.isArray(route.roles)) {
+          throw new TypeError(`Route "${route.path}" in "${filePath}" must declare roles as an array.`);
+        }
+        if (route.public !== true && !Array.isArray(route.roles)) {
           throw new TypeError(`Route "${route.path}" in "${filePath}" must declare roles.`);
         }
-        if (route.roles.some((role) => typeof role !== 'string')) {
+        if (route.roles?.some((role) => typeof role !== 'string')) {
           throw new TypeError(`Route "${route.path}" in "${filePath}" has an invalid role.`);
         }
         if (!route.element) {
@@ -29,11 +32,18 @@ export function discoverModuleRoutes(routeModules) {
         if (route.nav && typeof route.nav.label !== 'string') {
           throw new TypeError(`Navigation metadata for "${route.path}" must include a label.`);
         }
+        if (
+          route.homeFor !== undefined &&
+          (!Array.isArray(route.homeFor) || route.homeFor.some((role) => typeof role !== 'string'))
+        ) {
+          throw new TypeError(`Route "${route.path}" must declare homeFor as an array of roles.`);
+        }
 
         return {
-          public: false,
-          layout,
-          ...route
+          ...route,
+          public: route.public ?? false,
+          roles: route.roles ?? [],
+          layout
         };
       });
     })
@@ -48,4 +58,15 @@ export function discoverModuleRoutes(routeModules) {
   });
 
   return routes;
+}
+
+export function addLoginFallback(moduleRoutes, fallbackRoute) {
+  const moduleLoginRoute = moduleRoutes.find((route) => route.path === '/login');
+  if (moduleLoginRoute) {
+    return moduleRoutes.map((route) =>
+      route === moduleLoginRoute ? { ...route, public: true, layout: 'bare' } : route
+    );
+  }
+
+  return [...moduleRoutes, { ...fallbackRoute, public: true, layout: 'bare' }];
 }
