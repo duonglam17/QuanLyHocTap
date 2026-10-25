@@ -86,13 +86,23 @@ class AssignmentRepository {
   /**
    * Lấy danh sách bài tập của một khóa học
    */
-  async findByCourseId(courseId, connection = null) {
-    const sql = `
-      SELECT * FROM \`assignments\`
-      WHERE \`course_id\` = ? AND \`deleted_at\` IS NULL
-      ORDER BY \`deadline\` ASC, \`id\` ASC
-    `;
-    const params = [courseId];
+  async findByCourseId(courseId, { studentId = null } = {}, connection = null) {
+    const sql = studentId
+      ? `
+        SELECT a.*, s.\`status\` AS \`submission_status\`
+        FROM \`assignments\` a
+        LEFT JOIN \`submissions\` s
+          ON s.\`assignment_id\` = a.\`id\` AND s.\`student_id\` = ?
+        WHERE a.\`course_id\` = ? AND a.\`deleted_at\` IS NULL
+        ORDER BY a.\`deadline\` ASC, a.\`id\` ASC
+      `
+      : `
+        SELECT a.*, NULL AS \`submission_status\`
+        FROM \`assignments\` a
+        WHERE a.\`course_id\` = ? AND a.\`deleted_at\` IS NULL
+        ORDER BY a.\`deadline\` ASC, a.\`id\` ASC
+      `;
+    const params = studentId ? [studentId, courseId] : [courseId];
 
     let rows;
     if (connection) {
@@ -104,6 +114,36 @@ class AssignmentRepository {
     }
 
     return (rows || []).map((row) => new Assignment(row));
+  }
+
+  async update(id, { title, description, dueDate, maxScore, allowLateSubmission }, connection = null) {
+    const sql = `
+      UPDATE \`assignments\`
+      SET \`title\` = ?,
+          \`description\` = ?,
+          \`deadline\` = ?,
+          \`due_date\` = ?,
+          \`max_score\` = ?,
+          \`allow_late\` = ?,
+          \`allow_late_submission\` = ?
+      WHERE \`id\` = ? AND \`deleted_at\` IS NULL
+    `;
+    const params = [
+      title,
+      description,
+      dueDate,
+      dueDate,
+      maxScore,
+      allowLateSubmission ? 1 : 0,
+      allowLateSubmission ? 1 : 0,
+      id
+    ];
+    if (connection) {
+      await connection.query(sql, params);
+    } else {
+      await this.db.query(sql, params);
+    }
+    return Boolean(await this.findById(id, connection));
   }
 
   /**

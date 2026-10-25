@@ -38,6 +38,13 @@ router.get(
   assignmentController.getCourseAssignments
 );
 
+router.patch(
+  '/assignments/:id',
+  requireAuth,
+  requireRole(['GIANG_VIEN', 'ADMIN']),
+  assignmentController.updateAssignment
+);
+
 // 3. Xem chi tiết bài tập
 router.get(
   '/assignments/:id',

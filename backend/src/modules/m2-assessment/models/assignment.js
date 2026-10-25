@@ -14,6 +14,7 @@ class Assignment {
     max_score = 10.00,
     allow_late = false,
     allow_late_submission = false,
+    submission_status = null,
     status = 'OPEN',
     created_at,
     updated_at,
@@ -27,6 +28,7 @@ class Assignment {
     this.deadline = deadline || due_date;
     this.maxScore = Number(max_score);
     this.allowLateSubmission = Boolean(allow_late_submission || allow_late);
+    this.submissionStatus = submission_status;
     this.status = status;
     this.createdAt = created_at;
     this.updatedAt = updated_at;
@@ -43,6 +45,7 @@ class Assignment {
       deadline: this.deadline,
       max_score: this.maxScore,
       allow_late_submission: this.allowLateSubmission,
+      submission_status: this.submissionStatus,
       status: this.status,
       created_at: this.createdAt,
       updated_at: this.updatedAt,
@@ -52,4 +55,3 @@ class Assignment {
 }
 
 module.exports = Assignment;
-
