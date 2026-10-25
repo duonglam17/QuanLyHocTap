@@ -37,6 +37,31 @@ function createAttemptRepository(db) {
       return rows[0] || null;
     },
 
+    async findAttemptResultById(attemptId) {
+      const [rows] = await db.query(
+        `SELECT a.id AS attemptId, a.student_id AS studentId,
+                a.quiz_id AS quizId, q.course_id AS courseId,
+                q.title AS quizTitle, a.status,
+                a.started_at AS startedAt, a.submitted_at AS submittedAt,
+                a.expires_at AS expiresAt,
+                (SELECT COUNT(*)
+                 FROM questions qn
+                 WHERE qn.quiz_id = a.quiz_id) AS totalQuestions,
+                (SELECT COUNT(*)
+                 FROM attempt_answers aa
+                 JOIN questions qn ON qn.id = aa.question_id
+                 WHERE aa.attempt_id = a.id AND qn.quiz_id = a.quiz_id) AS answeredCount,
+                a.score, a.correct_answers_count AS correctAnswersCount,
+                q.show_score_immediately AS showScoreImmediately,
+                q.status AS quizStatus, q.close_time AS quizCloseTime
+         FROM attempts a
+         JOIN quizzes q ON q.id = a.quiz_id
+         WHERE a.id = ?`,
+        [attemptId]
+      );
+      return rows[0] || null;
+    },
+
     async findAttemptForUpdate(connection, attemptId) {
       const [rows] = await connection.query(
         `SELECT a.id, a.quiz_id AS quizId, a.student_id AS studentId,

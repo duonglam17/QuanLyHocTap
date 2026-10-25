@@ -11,6 +11,10 @@ const startAttemptSchema = z.object({
   })
 });
 
+const attemptResultSchema = z.object({
+  params: z.object({ attemptId: idSchema })
+});
+
 const saveAnswerSchema = z.object({
   params: z.object({ attemptId: idSchema }),
   body: z.object({
@@ -29,4 +33,9 @@ const submitAttemptSchema = z.object({
   })
 });
 
-module.exports = { startAttemptSchema, saveAnswerSchema, submitAttemptSchema };
+module.exports = {
+  startAttemptSchema,
+  attemptResultSchema,
+  saveAnswerSchema,
+  submitAttemptSchema
+};

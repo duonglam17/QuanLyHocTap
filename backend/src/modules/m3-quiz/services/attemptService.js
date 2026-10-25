@@ -89,6 +89,10 @@ function createAttemptService({
     );
   }
 
+  function formatDateTime(value) {
+    return value == null ? null : parseServerDateTime(value).toISOString();
+  }
+
   function buildSubmissionResult(attempt, now) {
     const visibleToStudent = isScoreVisible(attempt, now);
     return {
@@ -404,6 +408,67 @@ function createAttemptService({
         throw new ValidationError('Thông tin phiên làm bài không hợp lệ.');
       }
       return finalizeAttempt(attemptId, studentId, input);
+    },
+
+    async getAttemptResult(attemptId, userId, role) {
+      let attempt = await repository.findAttemptResultById(attemptId);
+      if (!attempt) {
+        throw new NotFoundError('Không tìm thấy lượt thi.');
+      }
+
+      if (role === 'SINH_VIEN') {
+        if (String(attempt.studentId) !== String(userId)) {
+          throw new ForbiddenError('Lượt thi không thuộc về sinh viên hiện tại.');
+        }
+      } else if (role === 'GIANG_VIEN') {
+        const courseAccess = getCourseAccess();
+        if (
+          !courseAccess ||
+          typeof courseAccess.getCourse !== 'function' ||
+          typeof courseAccess.isOwner !== 'function'
+        ) {
+          throw new InternalServerError('Port courseAccess chưa sẵn sàng.');
+        }
+        const course = await courseAccess.getCourse(attempt.courseId);
+        if (!course) {
+          throw new NotFoundError('Không tìm thấy khóa học.');
+        }
+        if (!(await courseAccess.isOwner(userId, attempt.courseId))) {
+          throw new ForbiddenError('Chỉ chủ khóa học mới được xem kết quả lượt thi.');
+        }
+      } else {
+        throw new ForbiddenError('Không có quyền xem kết quả lượt thi.');
+      }
+
+      const now = clock.now();
+      if (attempt.status === 'IN_PROGRESS' && isExpired(attempt, now)) {
+        await finalizeAttempt(attemptId, null, null, true);
+        attempt = await repository.findAttemptResultById(attemptId);
+        if (!attempt) {
+          throw new NotFoundError('Không tìm thấy lượt thi.');
+        }
+      }
+
+      const visibleToStudent = isScoreVisible(attempt, clock.now());
+      const isGraded = attempt.status !== 'IN_PROGRESS' && attempt.score != null;
+      return {
+        attemptId: Number(attempt.attemptId),
+        quizId: Number(attempt.quizId),
+        quizTitle: attempt.quizTitle,
+        status: attempt.status,
+        startedAt: formatDateTime(attempt.startedAt),
+        submittedAt: formatDateTime(attempt.submittedAt),
+        expiresAt: formatDateTime(attempt.expiresAt),
+        totalQuestions: Number(attempt.totalQuestions),
+        answeredCount: Number(attempt.answeredCount),
+        visibleToStudent,
+        maxScore: 10,
+        score: visibleToStudent && isGraded ? Number(attempt.score) : null,
+        correctCount:
+          visibleToStudent && isGraded && attempt.correctAnswersCount != null
+            ? Number(attempt.correctAnswersCount)
+            : null
+      };
     },
 
     autoSubmitExpiredAttempts

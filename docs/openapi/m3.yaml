@@ -646,6 +646,107 @@ paths:
                     details: null
         '422':
           description: Session input is invalid
+  /api/attempts/{attemptId}/result:
+    get:
+      tags:
+        - M3 Quiz
+      summary: Read a quiz attempt result without question or answer content
+      description: |
+        The attempt owner may read their own result; the course owner may read any attempt result in their course.
+        Archived courses remain readable. Expired in-progress attempts are auto-submitted and graded before the result is returned.
+        Scores and correct counts are null until grading is complete and the score is visible to students.
+      operationId: getQuizAttemptResult
+      security:
+        - bearerAuth: []
+      x-user-story: US-12
+      x-allowed-roles:
+        - SINH_VIEN
+        - GIANG_VIEN
+      parameters:
+        - name: attemptId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[1-9]\d*$'
+      responses:
+        '200':
+          description: Attempt result, including an in-progress state when not yet submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttemptResult'
+              examples:
+                visibleSubmittedResult:
+                  value:
+                    attemptId: 71
+                    quizId: 5
+                    quizTitle: Kiểm tra chương 1
+                    status: SUBMITTED
+                    startedAt: '2026-11-25T07:30:00.000Z'
+                    submittedAt: '2026-11-25T08:00:00.000Z'
+                    expiresAt: '2026-11-25T08:30:00.000Z'
+                    totalQuestions: 10
+                    answeredCount: 9
+                    visibleToStudent: true
+                    maxScore: 10
+                    score: 8
+                    correctCount: 8
+                inProgress:
+                  value:
+                    attemptId: 71
+                    quizId: 5
+                    quizTitle: Kiểm tra chương 1
+                    status: IN_PROGRESS
+                    startedAt: '2026-11-25T07:30:00.000Z'
+                    submittedAt: null
+                    expiresAt: '2026-11-25T08:30:00.000Z'
+                    totalQuestions: 10
+                    answeredCount: 4
+                    visibleToStudent: false
+                    maxScore: 10
+                    score: null
+                    correctCount: null
+        '401':
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example:
+                code: UNAUTHORIZED
+                message: Chưa xác thực hoặc phiên đăng nhập không hợp lệ.
+                details: null
+        '403':
+          description: Caller is neither the attempt owner nor the course owner
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example:
+                code: FORBIDDEN
+                message: Bạn không có quyền xem kết quả lượt thi.
+                details: null
+        '404':
+          description: Attempt or its course does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example:
+                code: NOT_FOUND
+                message: Không tìm thấy lượt thi.
+                details: null
+        '422':
+          description: Attempt identifier is invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example:
+                code: VALIDATION_ERROR
+                message: Dữ liệu đầu vào không hợp lệ.
+                details: null
   /api/courses/{courseId}/announcements:
     get:
       tags:
@@ -988,9 +1089,9 @@ components:
         message:
           type: string
         details:
-          nullable: true
-          oneOf:
+          anyOf:
             - type: array
+              nullable: true
               items:
                 type: object
                 properties:
@@ -1001,7 +1102,9 @@ components:
                   message:
                     type: string
             - type: object
+              nullable: true
             - type: string
+              nullable: true
     Notification:
       type: object
       required:
@@ -1643,6 +1746,67 @@ components:
           description: Null while the quiz score is hidden from the student.
         visibleToStudent:
           type: boolean
+    AttemptResult:
+      type: object
+      required:
+        - attemptId
+        - quizId
+        - quizTitle
+        - status
+        - startedAt
+        - submittedAt
+        - expiresAt
+        - totalQuestions
+        - answeredCount
+        - visibleToStudent
+        - maxScore
+        - score
+        - correctCount
+      properties:
+        attemptId:
+          type: integer
+          format: int64
+        quizId:
+          type: integer
+          format: int64
+        quizTitle:
+          type: string
+        status:
+          type: string
+          enum:
+            - IN_PROGRESS
+            - SUBMITTED
+            - AUTO_SUBMITTED
+        startedAt:
+          type: string
+          format: date-time
+        submittedAt:
+          type: string
+          format: date-time
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+        totalQuestions:
+          type: integer
+          minimum: 0
+        answeredCount:
+          type: integer
+          minimum: 0
+        visibleToStudent:
+          type: boolean
+        maxScore:
+          type: number
+          enum:
+            - 10
+        score:
+          type: number
+          nullable: true
+          description: Null until grading is complete and visibleToStudent is true.
+        correctCount:
+          type: integer
+          nullable: true
+          description: Null until grading is complete and visibleToStudent is true.
     AttemptConflict:
       type: object
       required:
@@ -1662,6 +1826,7 @@ components:
         message:
           type: string
         details:
+          type: object
           nullable: true
     CreateAnnouncementRequest:
       type: object
