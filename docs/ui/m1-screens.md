@@ -1,139 +1,311 @@
-# Đặc tả màn hình Frontend M1
+# Đặc tả Màn hình Giao diện Module M1 (Tài khoản, Khóa học, Bài giảng, Lịch học)
 
-> Bước 0 - tài liệu thiết kế, chưa triển khai giao diện. API và tên trường bên dưới lấy từ
-> [`docs/openapi/m1.yaml`](../openapi/m1.yaml); quy ước route, shared component và slot lấy từ
-> [`docs/frontend-contracts.md`](../frontend-contracts.md).
+> **Tài liệu Bước 0 - Frontend M1**  
+> Đối chiếu chuẩn theo [`docs/openapi/m1.yaml`](file:///d:/Project/QuanLyHocTap/docs/openapi/m1.yaml), [`docs/frontend-contracts.md`](file:///d:/Project/QuanLyHocTap/docs/frontend-contracts.md), [`docs/design-system.md`](file:///d:/Project/QuanLyHocTap/docs/design-system.md) và [`docs/PRD.md`](file:///d:/Project/QuanLyHocTap/docs/PRD.md).  
+> **Điều kiện tiên quyết:** B đã hoàn tất và merge F0a, F0b (`frontend/src/shared/**`, `frontend/src/app/**`, Design System tokens, Shared Components và Test Utilities đã hoạt động 100%).
 
-## Quy ước dùng chung
+---
 
-- Mọi trang được bảo vệ bởi xác thực và quyền route phù hợp; điều hướng không đủ quyền theo cơ chế 403 của app.
-- Mọi trang tải dữ liệu phải có `Loading`, `Error` (hiển thị message từ server, có Thử lại), `Empty` và `Success`.
-  Với form không tải danh sách, trạng thái ban đầu trống là `Idle`; khi gửi hiển thị loading và khóa nút.
-- Lỗi 422 gắn với trường tương ứng nếu API trả đủ chi tiết; lỗi khác hiển thị nguyên `message` của API. Không tự suy diễn
-  nội dung hoặc phân loại lỗi ngoài dữ liệu API.
-- Chỉ dùng component Tailwind/shadcn và semantic design token do shared cung cấp. Không dùng inline style, mã màu hex hay
-  render HTML người dùng. Thiết kế cần responsive từ 768px, desktop từ 1280x720 và dùng được trên Chrome, Firefox, Edge,
-  Safari hiện đại.
-- Component shared ghi ở đây theo mục 8 của frontend contract; trước khi triển khai cần xác nhận B đã merge F0a/F0b và
-  các export thực tế. Hiện thư mục shared trong workspace mới có Button, Input, PageTemplate, LoadingState, ErrorState,
-  EmptyState và StatusMessage; nhiều component trong hợp đồng vẫn chưa thấy trong scaffold.
-- `docs/design-system.md` và `frontend/README.md` chưa có trong workspace tại thời điểm lập tài liệu. Không giả định token,
-  hướng dẫn chạy hoặc quy ước ngoài những gì frontend contract mô tả.
+## I. Quy ước và Tiêu chuẩn Chung Module M1
 
-## 1. Đăng nhập
+1. **Phân quyền và Định tuyến (Route Guarding):**
+   - Mọi route (trừ route công khai `/login`) được bọc qua `<RequireAuth roles={[...]} />`. Nếu người dùng chưa đăng nhập, chuyển hướng về `/login` kèm lưu đường dẫn đang xem dở; nếu thiếu quyền, hiển thị trang 403 Forbidden.
+2. **Xử lý 3 Trạng thái Mạng (Network States):**
+   - **Loading:** Luôn có `Skeleton` cho danh sách/bảng hoặc `Spinner` cho form; khóa (disable) các nút thao tác để chống double-submit (EC-04).
+   - **Error:** Sử dụng `<ErrorState />` hiển thị chính xác `message` từ máy chủ kèm nút "Thử lại" (Fallback UI). Lỗi form 422 gắn message vào từng `<FormField />`. Ánh xạ mã lỗi 401 (phiên hết hạn / EC-14), 403 (không có quyền / IDOR EC-01), 404 (không tìm thấy), 409 (xung đột dữ liệu / EC-23), 429 (rate limit / EC-08, EC-22).
+   - **Success & Empty State:** Hiển thị dữ liệu chuẩn hóa; nếu danh sách rỗng thì hiển thị `<EmptyState />` với tiêu đề, mô tả và nút hành động gợi ý cụ thể theo vai trò người dùng.
+3. **Tuân thủ Design System (Design System Enforcement):**
+   - 100% sử dụng token ngữ nghĩa Tailwind CSS và thành phần từ `frontend/src/shared/components/`.
+   - Tuyệt đối KHÔNG sử dụng `style={{...}}` inline, KHÔNG dùng mã màu hex (`#...`), KHÔNG dùng `dangerouslySetInnerHTML`.
+   - Phông chữ hệ thống hỗ trợ tiếng Việt đầy đủ dấu; thời gian định dạng bằng `formatDateTime` (`Asia/Ho_Chi_Minh`), kích thước tệp dùng `formatFileSize`.
+   - Responsive tốt từ màn hình tablet (>= 768px) đến desktop (1280x720) theo NFR-10 và NFR-11.
+4. **Kiến trúc Slot & Không phụ thuộc chéo (Atomic Design & Loose Coupling):**
+   - M1 tuyệt đối không import code từ module `m2` hoặc `m3`.
+   - M1 cung cấp slot tab: `modules/m1/course-tabs.jsx` đăng ký hai tab: `lessons` (Bài giảng) và `schedule` (Lịch học).
+   - Trang chi tiết khóa học `/courses/:courseId` nạp danh sách tab từ `getCourseTabs(role)` từ `shared/lib/slots.js`, truyền props `{ courseId, course, role, isOwner }`.
+   - Trang bài học `/lessons/:lessonId` render các phần nội dung từ `getLessonSections(role)` từ `shared/lib/slots.js` (nơi khu vực thảo luận của M3 sẽ được tự động cắm vào).
 
-| Thuộc tính | Đặc tả |
-|---|---|
-| Route / layout | `/login`, public, layout `bare`. Sau đăng nhập quay về trang yêu cầu ban đầu nếu có; nếu không chuyển tới trang chủ phù hợp vai trò. |
-| Vai trò | Admin, Giảng viên, Sinh viên. |
-| API | `POST /api/auth/login` với `{ username, password }`; response `AuthSession` gồm `accessToken`, `refreshToken`, `user.id`, `user.role`, `user.must_change_password`. Việc lưu token và đổi mới phiên thuộc `useAuth()`, không xử lý trong module. |
-| Trạng thái | **Idle/Empty:** form trống, chưa có lỗi. **Loading:** đang đăng nhập, nút bị khóa và có Spinner. **Error:** hiện message server cho thông tin sai (`401`), tài khoản khóa (`403`, gồm LOCKED/TEMPORARY_LOCKED) và rate limit (`429`); lỗi thiếu trường (`400`) hiển thị tại form. |
-| Hành động chính | Nhập tên đăng nhập hoặc email và mật khẩu; kiểm tra trường bắt buộc; gửi qua `useAuth().login`. |
-| Component | Shared: FormField, Input, Label, Button, Spinner, Toast. M1: `LoginForm` và xử lý điều hướng sau login. |
-| Slot | Không có. |
+---
 
-## 2. Danh sách khóa học
+## II. Đặc tả Chi tiết Các Màn hình M1
 
-| Thuộc tính | Đặc tả |
-|---|---|
-| Route / layout | `/courses`, layout `default`. |
-| Vai trò | Admin, Giảng viên, Sinh viên. API trả khóa theo quyền người gọi: Admin xem danh sách theo API, Giảng viên khóa mình sở hữu, Sinh viên khóa đã ghi danh. |
-| API | `GET /api/courses`; response `{ items: Course[] }`. Trường Course theo OpenAPI: `id`, `code`, `title`, `description`, `semester`, `ownerId`, `enrollment_key` (nếu được phép trả), `status` (`DRAFT`, `PUBLISHED`, `ARCHIVED`). |
-| Trạng thái | **Loading:** skeleton danh sách. **Error:** ErrorState/Thử lại và message server. **Empty:** EmptyState giải thích chưa có khóa, kèm hành động theo vai trò. **Success:** danh sách khóa với StatusBadge. |
-| Hành động chính | Mở chi tiết; Giảng viên bắt đầu tạo/quản lý khóa; Sinh viên mở hộp thoại ghi danh; Admin mở khóa được API trả về. Khóa ARCHIVED được đánh dấu chỉ đọc. |
-| Component | Shared: PageHeader, DataState, DataTable hoặc card layout, StatusBadge `{ type: 'course', value: status }`, Button, EmptyState, ErrorState, Skeleton, FormDialog. M1: `CourseList`/`CourseCard`. |
-| Slot | Điểm gắn tab thuộc trang chi tiết khóa (mục 3); M1 đăng ký `lessons` và `schedule` ở các bước A4/A5. |
+### 1. Màn hình Đăng nhập (US-01, EC-08)
+- **Đường dẫn (Route):** `/login`
+- **Layout:** `bare` (toàn màn hình, không có thanh sidebar hay topbar điều hướng)
+- **Truy cập:** Công khai (`public: true`, áp dụng cho cả người chưa đăng nhập)
+- **Vai trò:** Khách chưa xác thực, Admin, Giảng viên, Sinh viên.
+- **API tương tác:**
+  - `POST /api/auth/login` (Body: `{ username, password }`)
+  - Response 200: `AuthSession` (`{ accessToken, refreshToken, user: { id, role, must_change_password } }`)
+- **3 Trạng thái mạng:**
+  - **Idle / Initial:** Form nhập dữ liệu sạch sẽ, con trỏ đặt tại ô tên đăng nhập/email.
+  - **Loading:** Nút "Đăng nhập" bị khóa, hiển thị `<Spinner />`, các trường nhập bị vô hiệu hóa tạm thời.
+  - **Error:**
+    - Lỗi thiếu trường (400): Hiển thị thông báo validation dưới từng ô nhập.
+    - Sai tên đăng nhập hoặc mật khẩu (401): Hiển thị `message` từ server ("Tên đăng nhập hoặc mật khẩu không đúng").
+    - Tài khoản bị tạm khóa 15 phút (403, `TEMPORARY_LOCKED`): Hiển thị `message` từ server ("Tài khoản bị tạm khóa 15 phút do nhập sai quá 5 lần").
+    - Tài khoản bị khóa hẳn (403, `LOCKED`): Hiển thị `message` từ server ("Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Admin").
+    - Quá giới hạn request (429): Hiển thị lỗi rate limit ("Bạn đã thao tác quá nhanh, vui lòng thử lại sau").
+  - **Success:** Lưu phiên qua `useAuth().login()`, chuyển hướng về trang người dùng đang xem dở hoặc trang chủ theo vai trò (Admin -> `/admin/users`, Giảng viên/Sinh viên -> `/courses`).
+- **Hành động chính:**
+  - Nhập tên đăng nhập hoặc email và mật khẩu.
+  - Bật/tắt ẩn hiện mật khẩu.
+  - Gửi form đăng nhập; xử lý chuyển trang mượt mà.
+- **Component dự kiến:**
+  - *Shared:* `Button`, `Input`, `Label`, `FormField`, `Spinner`, `StatusMessage`, `toast`.
+  - *Module M1:* Organism `LoginForm`, Page `LoginPage`.
+- **Slot liên quan:** Không có.
 
-## 3. Chi tiết khóa học
+---
 
-| Thuộc tính | Đặc tả |
-|---|---|
-| Route / layout | `/courses/:courseId`, layout `default`. |
-| Vai trò | Admin, Giảng viên là chủ khóa, Sinh viên đã ghi danh theo quyền xem chi tiết API. |
-| API | `GET /api/courses/{courseId}`; response `{ course: Course }`. Dùng `course.ownerId` để xác định `isOwner`; không tin giá trị role/owner do client cung cấp. |
-| Trạng thái | **Loading:** skeleton phần tiêu đề và tab. **Error:** ErrorState/Thử lại (bao gồm 403/404 với message server). **Empty:** không áp dụng riêng cho một khóa đơn, hiển thị not-found/error state; tab con vẫn có Empty riêng. **Success:** thông tin khóa và tab có dữ liệu. |
-| Hành động chính | Xem thông tin khóa và chuyển tab; khóa ARCHIVED chỉ đọc. |
-| Component | Shared: PageHeader, Tabs trang, StatusBadge khóa học, DataState/Skeleton/ErrorState. M1: `CourseDetailPage` truyền `{ courseId, course, role, isOwner }` cho các tab slot. |
-| Slot | `getCourseTabs()` theo frontend contract; lọc theo `roles`. M1 cung cấp tab `lessons`, `schedule`; không import tab của M2/M3. |
+### 2. Màn hình Danh sách Khóa học (US-03, US-04)
+- **Đường dẫn (Route):** `/courses`
+- **Layout:** `default` (có sidebar điều hướng, header và breadcrumb)
+- **Nav Menu:** `{ label: 'Khóa học', icon: 'BookOpen', order: 10, group: 'main' }`
+- **Vai trò:** `ADMIN`, `GIANG_VIEN`, `SINH_VIEN`.
+- **API tương tác:**
+  - `GET /api/courses`
+  - Response 200: `{ items: Course[] }` (mỗi Course gồm: `id`, `code`, `title`, `description`, `semester`, `ownerId`, `enrollment_key`, `status`: `DRAFT` | `PUBLISHED` | `ARCHIVED`).
+- **3 Trạng thái mạng:**
+  - **Loading:** Hiển thị lưới card `<Skeleton />` (hoặc các dòng skeleton bảng).
+  - **Error:** Hiển thị `<ErrorState />` kèm `message` server và nút "Thử lại" gọi refetch.
+  - **Empty:**
+    - Sinh viên: `<EmptyState title="Chưa tham gia khóa học nào" description="Hãy nhập mã ghi danh được giảng viên cung cấp để tham gia lớp học." action={<Button onClick={openEnrollDialog}>Ghi danh ngay</Button>} />`
+    - Giảng viên: `<EmptyState title="Chưa có khóa học nào" description="Bắt đầu tạo khóa học mới để chia sẻ bài giảng và quản lý sinh viên." action={<Button onClick={openCreateDialog}>Tạo khóa học mới</Button>} />`
+    - Admin: `<EmptyState title="Không có khóa học" description="Hệ thống chưa có khóa học nào được khởi tạo." />`
+  - **Success:** Lưới các thẻ khóa học (`CourseCard`) kèm phân loại học kỳ, trạng thái badge rõ ràng.
+- **Hành động chính:**
+  - Giảng viên: Nhấn nút "Tạo khóa học mới" (mở `CourseFormDialog`), sao chép nhanh mã ghi danh (với khóa đã xuất bản), xem trạng thái khóa học (`StatusBadge`).
+  - Sinh viên: Nhấn nút "Tham gia khóa học" (mở `EnrollmentDialog`).
+  - Mọi vai trò: Bấm vào thẻ để chuyển hướng đến `/courses/:courseId`.
+- **Component dự kiến:**
+  - *Shared:* `PageHeader`, `DataState`, `Button`, `StatusBadge`, `Skeleton`, `EmptyState`, `ErrorState`, `toast`.
+  - *Module M1:* Molecule `CourseCard`, Organisms `CourseList`, `CourseFormDialog`, `EnrollmentDialog`, Page `CoursesPage`.
+- **Slot liên quan:** Điểm neo mở vào trang chi tiết khóa học.
 
-## 4. Quản lý khóa học
+---
 
-| Thuộc tính | Đặc tả |
-|---|---|
-| Route / layout | Hành động tạo bắt đầu từ `/courses`; chỉnh sửa/xuất bản/lưu trữ từ `/courses/:courseId`. Chưa có route riêng bắt buộc trong contract. |
-| Vai trò | Giảng viên; các thao tác mutation chỉ dành cho chủ khóa theo backend. Admin có quyền xem/lưu trữ theo API nhưng không được mặc định quyền sửa. |
-| API | Tạo `POST /api/courses` với `code`, `title`, `description?`, `semester`, `enrollmentKey?`; sửa `PATCH /api/courses/{courseId}` với ít nhất một trường; xuất bản `PATCH /api/courses/{courseId}/publish`; lưu trữ `PATCH /api/courses/{courseId}/archive`. `DELETE /api/courses/{courseId}` là API xóa mềm khóa rỗng hoặc lưu trữ khóa có dữ liệu; không có xóa cứng. |
-| Trạng thái | **Loading:** loading form/mutation, khóa nút gửi. **Error:** lỗi server (đặc biệt 403/409/422) hiển thị đúng message; lỗi validation gắn trường. **Empty:** form tạo mới ở trạng thái rỗng/Idle; không có chi tiết khóa thì không hiển thị action edit. **Success:** cập nhật khóa và StatusBadge; báo thành công bằng Toast. |
-| Hành động chính | Tạo khóa DRAFT, sửa thông tin, xuất bản, lưu trữ bằng ConfirmDialog; xem/sao chép `enrollment_key` nếu API trả về. Dữ liệu có phát sinh không bao giờ cho phép xóa cứng; ưu tiên action Lưu trữ và để backend quyết định an toàn. |
-| Component | Shared: FormDialog, FormField, Input, Textarea, Button, ConfirmDialog, StatusBadge, Toast, Spinner. M1: `CourseForm` và action toolbar. |
-| Slot | Nằm trong trang chi tiết khóa và không thay đổi hợp đồng slot. |
+### 3. Màn hình Chi tiết Khóa học (US-03, US-04, có Tab Slot)
+- **Đường dẫn (Route):** `/courses/:courseId`
+- **Layout:** `default`
+- **Vai trò:** `ADMIN`, `GIANG_VIEN` (chủ sở hữu hoặc quản lý), `SINH_VIEN` (đã ghi danh).
+- **API tương tác:**
+  - `GET /api/courses/{courseId}`
+  - Response 200: `{ course: Course }`
+- **3 Trạng thái mạng:**
+  - **Loading:** Skeleton toàn trang (phần header khóa học và thanh tabs).
+  - **Error:** `<ErrorState />` (nếu 403: "Bạn không có quyền truy cập khóa học này"; nếu 404: "Khóa học không tồn tại").
+  - **Empty:** Không áp dụng trực tiếp cho thông tin khóa; tab con bên trong sẽ tự xử lý Empty riêng.
+  - **Success:** Header hiển thị tên khóa, mã môn, học kỳ, mã ghi danh (với chủ khóa), StatusBadge (`DRAFT` | `PUBLISHED` | `ARCHIVED`). Nếu khóa ở trạng thái `ARCHIVED`, hiển thị banner cảnh báo: "Khóa học đã được lưu trữ (chỉ đọc)".
+- **Hành động chính:**
+  - Xem thông tin tổng quan khóa học.
+  - Giảng viên sở hữu: Xuất bản khóa học (`PUBLISHED`), Chỉnh sửa thông tin, Lưu trữ khóa học (`ARCHIVED`), sao chép Enrollment Key.
+  - Chuyển đổi linh hoạt giữa các tab: Bài giảng, Lịch học, Bài tập, Bảng điểm, Đề thi, v.v.
+- **Component dự kiến:**
+  - *Shared:* `PageHeader`, `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent`, `StatusBadge`, `Button`, `Badge`, `ConfirmDialog`, `toast`.
+  - *Module M1:* Molecule `CourseHeader`, Organism `CourseManagementBar`, Page `CourseDetailPage`.
+- **Slot liên quan (Quan trọng):**
+  - Host chứa các tab: gọi `getCourseTabs(role)` từ `shared/lib/slots.js`.
+  - Truyền đầy đủ props cho component tab: `{ courseId, course, role, isOwner }`.
+  - Tự động tích hợp các tab của M2 (`assignments`, `grades`) và M3 (`quizzes`, `announcements`) mà không import trực tiếp mã của M2/M3.
 
-## 5. Ghi danh bằng mã
+---
 
-| Thuộc tính | Đặc tả |
-|---|---|
-| Route / layout | Hộp thoại từ `/courses`, không cần route độc lập đã chốt. |
-| Vai trò | Sinh viên. |
-| API | `POST /api/courses/enroll` với `{ enrollment_key }`; thành công `201`. API phân biệt chữ hoa/thường, chỉ khóa PUBLISHED; rate limit trả `429`. |
-| Trạng thái | **Idle/Empty:** ô nhập mã trống. **Loading:** khóa nút tham gia. **Error:** hiện message server cho `400`, `403`, `404` (mã sai/khóa chưa xuất bản), `409` (đã ghi danh), `429`. **Success:** Toast và refetch danh sách khóa học. |
-| Hành động chính | Nhập mã 6–8 ký tự chữ/số, gửi ghi danh, đóng hộp thoại sau thành công. |
-| Component | Shared: FormDialog, FormField, Input, Button, Spinner, Toast. M1: `EnrollmentDialog`. |
-| Slot | Không có. |
+### 4. Quản lý Khóa học (Tạo, Sửa, Xuất bản, Lưu trữ - US-03, EC-09)
+- **Đường dẫn (Route):**
+  - Tạo mới: Hộp thoại `CourseFormDialog` kích hoạt từ `/courses`.
+  - Sửa / Xuất bản / Lưu trữ: Toolbar/menu thao tác trên header của `/courses/:courseId`.
+- **Vai trò:** `GIANG_VIEN` (chủ sở hữu khóa học `course.ownerId === user.id`), `ADMIN` (quyền lưu trữ).
+- **API tương tác:**
+  - Tạo: `POST /api/courses` (Body: `{ code, title, description?, semester, enrollmentKey? }`)
+  - Cập nhật: `PATCH /api/courses/{courseId}` (Body: `{ code?, title?, description?, semester?, enrollmentKey? }`)
+  - Xuất bản: `PATCH /api/courses/{courseId}/publish`
+  - Lưu trữ: `PATCH /api/courses/{courseId}/archive`
+  - Xóa mềm/Lưu trữ: `DELETE /api/courses/{courseId}` (Tự động chuyển lưu trữ nếu đã có dữ liệu phát sinh theo EC-09).
+- **3 Trạng thái mạng:**
+  - **Loading:** Nút "Lưu" / "Xác nhận" hiển thị `<Spinner />` và bị disable.
+  - **Error:**
+    - Lỗi 409: "Mã môn học hoặc mã ghi danh đã được sử dụng" hoặc "Khóa học đã lưu trữ không thể sửa đổi".
+    - Lỗi 422: Gắn lỗi vào từng trường tương ứng trong form.
+    - Lỗi 403: "Bạn không có quyền chỉnh sửa khóa học này".
+  - **Success:** Đóng modal, hiển thị `toast.success`, làm mới cache dữ liệu (`invalidate` queries).
+- **Hành động chính:**
+  - Nhập thông tin khóa học: Mã môn, Tên khóa học, Học kỳ, Mô tả, Tùy chọn đặt trước mã ghi danh (6-8 ký tự) hoặc để server tự sinh.
+  - Xuất bản khóa học với `<ConfirmDialog />` để mở cho sinh viên ghi danh.
+  - Lưu trữ khóa học với `<ConfirmDialog />` (khóa đã lưu trữ sẽ khóa toàn bộ hoạt động nộp bài/làm bài và chuyển sang chế độ chỉ đọc).
+- **Component dự kiến:**
+  - *Shared:* `FormDialog`, `FormField`, `Input`, `Textarea`, `Button`, `ConfirmDialog`, `toast`, `Spinner`.
+  - *Module M1:* Organism `CourseFormDialog`, Molecule `CourseActionsDropdown`.
+- **Slot liên quan:** Nằm trong trang danh sách và trang chi tiết khóa học.
 
-## 6. Quản lý người dùng
+---
 
-| Thuộc tính | Đặc tả |
-|---|---|
-| Route / layout | `/admin/users`, layout `default`. |
-| Vai trò | ADMIN. |
-| API | `GET /api/users?search&role&status&page&limit` trả `{ items, total, page, limit }`; `POST /api/users` với `{ fullName, username, email, role }`; `PATCH /api/users/{userId}/status` với `{ status: ACTIVE|LOCKED }`; `PATCH /api/users/{userId}/role` với `{ role }`; `DELETE /api/users/{userId}` để xóa mềm. |
-| Trạng thái | **Loading:** skeleton bảng/tìm kiếm. **Error:** message server và Thử lại. **Empty:** không có người dùng phù hợp bộ lọc, có thể xóa bộ lọc/tạo tài khoản. **Success:** bảng phân trang; StatusBadge `{ type: 'account', value: status }`. Mutation có loading/error riêng và khóa nút gửi. |
-| Hành động chính | Tìm kiếm, lọc role/status, đổi trang; tạo tài khoản; khóa/mở khóa, đổi vai trò và xóa mềm sau ConfirmDialog. Vô hiệu hóa tự khóa khi người dùng là tài khoản hiện tại, đồng thời vẫn hiển thị lỗi server nếu API từ chối. Hiển thị mật khẩu ban đầu trả về từ POST đúng một lần, có nút sao chép. |
-| Component | Shared: DataTable, SearchInput, Select, Pagination, StatusBadge, FormDialog, FormField, ConfirmDialog, Button, Toast, EmptyState, ErrorState, Skeleton. M1: cấu hình cột và `UserForm`. |
-| Slot | Không có. |
+### 5. Ghi danh Khóa học bằng Mã (US-04, EC-22)
+- **Đường dẫn (Route):** Hộp thoại `EnrollmentDialog` kích hoạt từ `/courses`.
+- **Vai trò:** `SINH_VIEN`.
+- **API tương tác:**
+  - `POST /api/courses/enroll` (Body: `{ enrollment_key }`)
+  - Response 201: Thành công.
+- **3 Trạng thái mạng:**
+  - **Idle / Initial:** Input mã ghi danh trống, có gợi ý định dạng (6-8 ký tự, phân biệt chữ hoa/thường).
+  - **Loading:** Khóa nút "Tham gia", hiển thị icon spinner.
+  - **Error:**
+    - Mã sai hoặc khóa chưa xuất bản (404): "Mã ghi danh không tồn tại hoặc chưa xuất bản".
+    - Đã ghi danh trước đó (409): "Bạn đã là thành viên của khóa học này".
+    - Nhập sai quá nhiều lần (429 - EC-22): "Bạn đã thử quá nhiều lần, vui lòng đợi 1 phút".
+    - Trống mã (400): "Vui lòng nhập mã ghi danh".
+  - **Success:** Thông báo `toast.success("Ghi danh khóa học thành công")`, đóng hộp thoại, tự động chuyển hướng hoặc refetch danh sách khóa học.
+- **Hành động chính:**
+  - Nhập mã ghi danh (tự động cắt khoảng trắng thừa).
+  - Gửi yêu cầu ghi danh.
+- **Component dự kiến:**
+  - *Shared:* `Dialog`, `DialogContent`, `DialogHeader`, `DialogTitle`, `FormField`, `Input`, `Button`, `Spinner`, `toast`.
+  - *Module M1:* Organism `EnrollmentDialog`.
+- **Slot liên quan:** Không có.
 
-## 7. Bài giảng và tài liệu
+---
 
-| Thuộc tính | Đặc tả |
-|---|---|
-| Route / layout | Tab `Bài giảng` trong `/courses/:courseId`; trang bài học `/lessons/:lessonId` dùng layout `default`. |
-| Vai trò | Chủ khóa/Giảng viên tạo bài học và upload tài liệu; Sinh viên đã ghi danh xem bài và tải tài liệu. Khóa ARCHIVED chỉ đọc. |
-| API | `GET /api/courses/{courseId}/lessons`; `POST /api/courses/{courseId}/lessons` với `{ title, content?, orderIndex? }`; `GET /api/lessons/{lessonId}/materials`; `POST /api/lessons/{lessonId}/materials` multipart `{ title, file }`; download qua `GET /api/courses/{courseId}/materials/{materialId}/download` với xác thực qua api client. File được giới hạn 50 MiB và allowlist `.pdf`, `.docx`, `.pptx`, `.zip`, `.rar`. |
-| Trạng thái | **Loading:** skeleton danh sách bài/tài liệu hoặc tiến trình upload. **Error:** ErrorState/Thử lại; giữ message API, không mất form khi thất bại. **Empty:** EmptyState; giảng viên có action tạo bài, sinh viên chỉ thấy nội dung rỗng. **Success:** bài theo thứ tự, metadata tài liệu và nút tải. |
-| Hành động chính | Giảng viên tạo bài và upload tài liệu bằng FileInput; sinh viên tải file bằng `api.download` (không đặt token trong URL). Không cung cấp nút sửa/xóa bài cho tới khi API được đặc tả. |
-| Component | Shared: Tabs trang, DataState, EmptyState, ErrorState, Skeleton, FormDialog, FormField, Input, Textarea, Button, FileInput, Pagination nếu danh sách cần phân trang, Toast. M1: `LessonList`, `LessonForm`, `MaterialList`, `MaterialUploadForm`, trang nội dung bài học. |
-| Slot | Tab `lessons` đăng ký qua `course-tabs.jsx`. Trang bài học là host cho `getLessonSections()`; không import module M3, phần thảo luận của M3 được nạp qua slot. |
+### 6. Quản lý Người dùng - Admin (US-02, EC-08, EC-14)
+- **Đường dẫn (Route):** `/admin/users`
+- **Layout:** `default`
+- **Nav Menu:** `{ label: 'Người dùng', icon: 'Users', order: 20, group: 'admin' }`
+- **Vai trò:** `ADMIN`.
+- **API tương tác:**
+  - Lấy danh sách: `GET /api/users?search&role&status&page&limit` (Response: `{ items: ManagedUser[], total, page, limit }`)
+  - Tạo mới: `POST /api/users` (Body: `{ fullName, username, email, role }`; Response 201: `{ user, initialPassword }`)
+  - Đổi trạng thái khóa/mở: `PATCH /api/users/{userId}/status` (Body: `{ status: 'ACTIVE' | 'LOCKED' }`)
+  - Đổi vai trò: `PATCH /api/users/{userId}/role` (Body: `{ role: 'ADMIN' | 'GIANG_VIEN' | 'SINH_VIEN' }`)
+  - Xóa mềm: `DELETE /api/users/{userId}`
+- **3 Trạng thái mạng:**
+  - **Loading:** Bảng hiển thị hàng loạt dòng `<Skeleton />`.
+  - **Error:** `<ErrorState />` hiển thị lỗi máy chủ và nút "Thử lại".
+  - **Empty:** `<EmptyState title="Không tìm thấy người dùng" description="Không có người dùng nào khớp với bộ lọc hiện tại." />`
+  - **Success:** Bảng dữ liệu `<DataTable />` gồm các cột: Họ tên, Tên đăng nhập, Email, Vai trò, Trạng thái (`StatusBadge`), Ngày tạo, Thao tác.
+- **Hành động chính:**
+  - Tìm kiếm theo từ khóa (họ tên, username, email) với `SearchInput`.
+  - Lọc theo Vai trò (`Select`) và Trạng thái (`Select`).
+  - Chuyển trang qua `<Pagination />`.
+  - Tạo tài khoản mới: Sau khi tạo, hiển thị popup modal chứa **Mật khẩu ban đầu (initialPassword)** đúng một lần kèm nút "Sao chép mật khẩu" và cảnh báo bảo mật.
+  - Khóa / Mở khóa tài khoản: Yêu cầu xác nhận qua `<ConfirmDialog />`. **Đặc biệt:** Vô hiệu hóa nút khóa đối với chính tài khoản Admin đang đăng nhập; nếu server từ chối, hiển thị thông báo lỗi từ server.
+  - Thay đổi vai trò người dùng với `<ConfirmDialog />`.
+- **Component dự kiến:**
+  - *Shared:* `PageHeader`, `DataTable`, `SearchInput`, `Select`, `Pagination`, `StatusBadge`, `ConfirmDialog`, `Button`, `toast`, `EmptyState`, `ErrorState`, `Skeleton`.
+  - *Module M1:* Organism `UserFormDialog`, Organism `InitialPasswordModal`, Page `AdminUsersPage`.
+- **Slot liên quan:** Không có.
 
-## 8. Lịch học và thời khóa biểu
+---
 
-| Thuộc tính | Đặc tả |
-|---|---|
-| Route / layout | Tab `Lịch học` trong `/courses/:courseId`; thời khóa biểu cá nhân `/me/schedule`, layout `default` và có nav cho Sinh viên. |
-| Vai trò | Tab khóa: chủ khóa và Sinh viên đã ghi danh được xem; chỉ Giảng viên chủ khóa được tạo/sửa/hủy. Thời khóa biểu tổng hợp: Sinh viên. |
-| API | Tab khóa: `GET /api/courses/{courseId}/schedules`; tạo `POST` cùng path với `{ title, date, startTime, endTime, roomOrLink }`; sửa `PATCH /api/schedules/{scheduleId}`; hủy `DELETE /api/schedules/{scheduleId}`. Thời khóa biểu cá nhân: `GET /api/me/schedule?page&limit`, trả `{ items, total, page, limit }`, mỗi item gồm dữ liệu Schedule và `courseCode`, `courseTitle`. |
-| Trạng thái | **Loading:** skeleton lịch/bảng và pagination. **Error:** hiển thị message server cho lỗi quyền, validation và xung đột giờ; có Thử lại. **Empty:** chưa có buổi học, giảng viên có action tạo; lịch cá nhân trống có giải thích. **Success:** lịch theo ngày/giờ; định dạng ngày/giờ qua helper shared. |
-| Hành động chính | Giảng viên tạo, sửa, hủy (ConfirmDialog); validate `startTime < endTime`; hiển thị message server khi trùng lịch. Sinh viên xem lịch khóa và lịch tổng hợp theo trang. StatusBadge theo enum `SCHEDULED`, `RESCHEDULED`, `CANCELLED`. |
-| Component | Shared: Tabs trang, DateTimeInput, FormDialog, FormField, Input, Button, ConfirmDialog, StatusBadge `{ type: 'schedule', value: status }`, DataTable, Pagination, DataState, Toast, `formatDateTime`. M1: `ScheduleList`, `ScheduleForm`, `MySchedulePage`. |
-| Slot | Tab `schedule` đăng ký qua `course-tabs.jsx`; `/me/schedule` là route riêng của M1. |
+### 7. Bài giảng và Tài liệu (US-05, US-06, EC-01, EC-03, EC-18, EC-19, EC-20)
+- **Đường dẫn (Route):**
+  - Tab trong khóa học: Tab "Bài giảng" tại `/courses/:courseId`.
+  - Trang chi tiết bài học: `/lessons/:lessonId`.
+- **Layout:** `default`
+- **Vai trò:**
+  - `GIANG_VIEN` (chủ sở hữu): Thêm bài học, tải lên tài liệu học tập.
+  - `SINH_VIEN` (đã ghi danh): Xem bài học, tải tài liệu đính kèm về máy.
+  - Khóa đã `ARCHIVED`: Chỉ đọc cho tất cả vai trò.
+- **API tương tác:**
+  - Danh sách bài & tài liệu: `GET /api/courses/{courseId}/lessons`
+  - Tạo bài học: `POST /api/courses/{courseId}/lessons` (Body: `{ title, content?, orderIndex? }`)
+  - Danh sách tài liệu của bài: `GET /api/lessons/{lessonId}/materials`
+  - Tải lên tài liệu: `POST /api/lessons/{lessonId}/materials` (Multipart form-data: `{ title, file }`)
+  - Tải tài liệu về máy (Download): `GET /api/courses/{courseId}/materials/{materialId}/download` (dùng `api.download`, stream nhị phân an toàn kèm xác thực).
+- **3 Trạng thái mạng:**
+  - **Loading:** Skeleton danh sách cây bài học và tài liệu; thanh tiến trình (`Progress`) khi tải lên tài liệu.
+  - **Error:**
+    - Lỗi tải tệp quá 50MB (400/413): "Dung lượng tệp vượt quá giới hạn tối đa 50MB".
+    - Lỗi định dạng tệp (400/415): "Loại định dạng tệp không được hỗ trợ. Chỉ chấp nhận PDF, DOCX, PPTX, ZIP, RAR".
+    - Lỗi không có quyền (403): "Bạn không có quyền truy cập tài liệu này".
+  - **Empty:**
+    - Giảng viên: `<EmptyState title="Chưa có bài giảng nào" description="Hãy tạo bài học đầu tiên và tải lên tài liệu cho sinh viên." action={<Button onClick={openAddLesson}>Thêm bài học</Button>} />`
+    - Sinh viên: `<EmptyState title="Chưa có nội dung bài học" description="Giảng viên chưa đăng tải nội dung cho khóa học này." />`
+  - **Success:** Danh sách bài học sắp xếp theo thứ tự `orderIndex`, mỗi bài kèm danh sách tài liệu với biểu tượng file, dung lượng định dạng (`formatFileSize`), nút tải xuống.
+- **Hành động chính:**
+  - Giảng viên: Tạo bài học mới, tải lên tài liệu bằng `<FileInput />` (có validate kích thước <= 50MB, kiểm tra phần mở rộng tệp, hiển thị tiến trình upload `onProgress`).
+  - Sinh viên: Xem bài học, bấm tải tài liệu an toàn qua `api.download` (tên file gốc được giữ nguyên, token không bị lộ trên URL theo BR-11 và EC-18).
+- **Component dự kiến:**
+  - *Shared:* `DataState`, `FileInput`, `Button`, `FormField`, `Input`, `Textarea`, `Skeleton`, `EmptyState`, `ErrorState`, `toast`.
+  - *Module M1:* Molecules `LessonCard`, `MaterialItem`, Organisms `LessonList`, `LessonFormDialog`, `MaterialUploadDialog`, Page `LessonDetailPage`.
+- **Slot liên quan (Quan trọng):**
+  - Đóng góp tab `lessons` vào `modules/m1/course-tabs.jsx`.
+  - Trang bài học `/lessons/:lessonId` đóng vai trò là **Host** nạp các phần mở rộng bài học từ `getLessonSections(role)` (nơi diễn đàn thảo luận của M3 sẽ được cắm vào).
 
-## Điểm cần làm rõ trước khi triển khai các bước A1–A5
+---
 
-1. **F0a/F0b và shared UI:** scaffold hiện chưa có nhiều component/hook được liệt kê ở frontend contract (FormField, ConfirmDialog, DataTable, Pagination, FileInput, DateTimeInput, Tabs trang, Toast, `DataState`, hooks, auth). Chờ B merge F0a/F0b và xác nhận import path/export; không tự thêm component trong `shared` ở phạm vi M1.
-2. **Design system và hướng dẫn chạy:** `docs/design-system.md` và `frontend/README.md` chưa có. Cần B cung cấp tài liệu design token/hướng dẫn frontend trước khi chọn style cụ thể hoặc thực hiện quy trình lệnh của các bước sau.
-3. **Đăng nhập và profile:** OpenAPI `AuthSession.user` hiện chỉ mô tả `id`, `role`, `must_change_password`, trong khi `useAuth()` contract yêu cầu thêm `fullName`, `username`; cần xác nhận profile được lấy từ đâu để hiển thị tên và quyết định trang chủ theo role.
-4. **Lưu trữ/xóa khóa:** `DELETE /api/courses/{courseId}` tự quyết định xóa mềm khóa rỗng hay lưu trữ khóa có dữ liệu; API không trả cờ dữ liệu phát sinh để UI biết trước thao tác. Chốt dùng action “Xóa mềm/Lưu trữ” thống nhất hay tách rõ nút Lưu trữ và xử lý khóa rỗng.
-5. **Ghi danh thành công:** OpenAPI định nghĩa status 201 nhưng chưa có schema response; xác nhận response để điều hướng thẳng vào khóa vừa ghi danh nếu cần.
-6. **Bài giảng:** OpenAPI có GET/POST lesson, không đặc tả PATCH/DELETE lesson dù yêu cầu A4 có sửa/xóa; response schema cho lessons/materials cũng chưa mô tả đầy đủ. Cần bổ sung API/schema trước khi xây các thao tác này.
-7. **Upload errors:** OpenAPI mô tả upload không hỗ trợ/quá 50MB bằng `400` và tiêu đề sai bằng `422`; chưa định nghĩa `413`/`415` dù yêu cầu A4 muốn xử lý hai status này. Chốt status thực tế; không ánh xạ giả 400 thành 413/415 ở UI.
-8. **Lịch đã hủy:** API danh sách lịch khóa hiện mô tả chỉ trả lịch active, vì vậy UI không thể hiển thị `StatusBadge` `CANCELLED` ở danh sách đó; cần chốt có cần xem lịch đã hủy hay chỉ hiện trạng thái ngay sau thao tác hủy.
-9. **Trang danh sách khóa:** API hiện chỉ có danh sách khóa theo người dùng, không có API tìm kiếm khóa công khai để Sinh viên khám phá khóa chưa tham gia. Chốt dùng ghi danh trực tiếp bằng mã trong dialog từ `/courses`.
-10. **Test/design-system validation:** frontend contract yêu cầu mỗi trang kiểm thử Loading/Error/Empty và một hành động chính. Khi B merge test utilities/hooks/shared components, cần dùng `renderWithProviders`/`mockAuth`; rà `style=`, mã hex và CSS lạ trước khi hoàn tất mỗi bước.
+### 8. Lịch học và Thời khóa biểu (US-17, US-18, EC-23, EC-24)
+- **Đường dẫn (Route):**
+  - Tab trong khóa học: Tab "Lịch học" tại `/courses/:courseId`.
+  - Thời khóa biểu cá nhân của sinh viên: `/me/schedule` (Nav item: `{ label: 'Lịch học của tôi', icon: 'Calendar', order: 15, group: 'main' }`).
+- **Layout:** `default`
+- **Vai trò:**
+  - Tab khóa học: Giảng viên chủ sở hữu (xem, tạo, sửa, hủy buổi học), Sinh viên đã ghi danh (chỉ xem).
+  - Route `/me/schedule`: Sinh viên xem lịch học tổng hợp của tất cả các môn đã ghi danh.
+- **API tương tác:**
+  - Danh sách lịch khóa: `GET /api/courses/{courseId}/schedules` (Response: `{ schedules: Schedule[] }`)
+  - Tạo buổi học: `POST /api/courses/{courseId}/schedules` (Body: `{ title, date, startTime, endTime, roomOrLink }`)
+  - Cập nhật buổi học: `PATCH /api/schedules/{scheduleId}` (Body: `{ title?, date?, startTime?, endTime?, roomOrLink? }`)
+  - Hủy buổi học: `DELETE /api/schedules/{scheduleId}`
+  - Thời khóa biểu cá nhân: `GET /api/me/schedule?page&limit` (Response: `{ items: (Schedule & { courseCode, courseTitle })[], total, page, limit }`)
+- **3 Trạng thái mạng:**
+  - **Loading:** Skeleton danh sách các buổi học / lịch trình theo ngày.
+  - **Error:**
+    - Lỗi trùng giờ học (409 - EC-23): Hiển thị đúng thông báo máy chủ "Khung giờ bị trùng với buổi học đã tồn tại trên hệ thống".
+    - Lỗi giờ không hợp lệ (422): "Giờ kết thúc phải sau giờ bắt đầu".
+    - Lỗi khóa học đã lưu trữ (409): "Khóa học đã lưu trữ, không thể chỉnh sửa lịch học".
+  - **Empty:**
+    - Tab khóa: `<EmptyState title="Chưa có lịch học" description="Chưa có buổi học nào được lên lịch cho khóa học này." />`
+    - Lịch cá nhân: `<EmptyState title="Không có lịch học" description="Bạn không có buổi học nào trong thời gian tới." />`
+  - **Success:** Danh sách buổi học sắp xếp theo ngày và giờ tăng dần. Buổi học sắp diễn ra gần nhất được làm nổi bật. StatusBadge: `SCHEDULED` (Đã lên lịch), `RESCHEDULED` (Đổi lịch), `CANCELLED` (Đã hủy).
+- **Hành động chính:**
+  - Giảng viên: Tạo buổi học với `<DateTimeInput />`, chỉnh sửa thời gian/phòng học/link, hủy buổi học qua `<ConfirmDialog />`.
+  - Sinh viên: Xem lịch chi tiết theo từng khóa học hoặc xem lịch tổng hợp toàn bộ các môn tại `/me/schedule`, phân trang đầy đủ.
+- **Component dự kiến:**
+  - *Shared:* `DataState`, `DateTimeInput`, `FormField`, `Input`, `Button`, `ConfirmDialog`, `StatusBadge`, `Pagination`, `EmptyState`, `ErrorState`, `Skeleton`, `toast`.
+  - *Module M1:* Molecules `ScheduleItem`, `ScheduleCard`, Organisms `ScheduleList`, `ScheduleFormDialog`, Page `MySchedulePage`.
+- **Slot liên quan:**
+  - Đóng góp tab `schedule` vào `modules/m1/course-tabs.jsx`.
 
-## File tiền đề chưa có
+---
 
-- `docs/design-system.md`
-- `frontend/README.md`
+## III. Bảng Tổng hợp Component Phân tầng (Atomic Design) Module M1
 
-## Skills
+| Tầng (Atomic Level) | Thành phần Module M1 | Nguồn gốc / Ghi chú |
+|---|---|---|
+| **Atoms & Molecules từ Shared** | `Button`, `Input`, `Textarea`, `Label`, `Select`, `Checkbox`, `Switch`, `Badge`, `Avatar`, `Skeleton`, `Spinner`, `Tooltip`, `Dialog`, `AlertDialog`, `DropdownMenu`, `Tabs`, `Popover`, `Table`, `FormField`, `SearchInput`, `PageHeader`, `ConfirmDialog`, `FileInput`, `DateTimeInput`, `StatusBadge`, `Pagination`, `toast` | Nhập trực tiếp từ `@/shared/components` |
+| **M1 Molecules** | `CourseCard`, `CourseHeader`, `LessonCard`, `MaterialItem`, `ScheduleItem`, `ScheduleCard`, `UserRowActions` | Xây dựng trong `frontend/src/modules/m1/components/` |
+| **M1 Organisms** | `LoginForm`, `CourseList`, `CourseFormDialog`, `EnrollmentDialog`, `LessonList`, `LessonFormDialog`, `MaterialUploadDialog`, `ScheduleList`, `ScheduleFormDialog`, `UserFormDialog`, `InitialPasswordModal` | Xây dựng trong `frontend/src/modules/m1/components/` |
+| **M1 Pages** | `LoginPage`, `CoursesPage`, `CourseDetailPage`, `LessonDetailPage`, `AdminUsersPage`, `MySchedulePage` | Xây dựng trong `frontend/src/modules/m1/pages/` |
+| **M1 Slots** | `course-tabs.jsx` (đóng góp tab `lessons` và `schedule`) | Đặt tại gốc `frontend/src/modules/m1/course-tabs.jsx` |
 
-Các skill `frontend-component-architect`, `design-system-enforcement` và `frontend-api-integration` không có trong danh sách skill khả dụng của môi trường này; tài liệu được lập theo frontend contract, OpenAPI và scaffold đang có.
+---
+
+## IV. Các Điểm Cần Làm Rõ / Thắc mắc Kỹ thuật (Mơ hồ)
+
+1. **Thông tin Người dùng trong Phiên đăng nhập (`AuthSession.user`):**
+   - OpenAPI `m1.yaml` định nghĩa `AuthSession.user` chỉ gồm: `{ id, role, must_change_password }`.
+   - Trong khi đó, `shared/auth/AuthProvider.jsx` và `frontend-contracts.md` mong muốn `user` có cả `fullName` và `username` để hiển thị trên Topbar / Avatar.
+   - *Đề xuất:* Trong bước A1, nếu API backend chưa trả `fullName`/`username` trong session, frontend M1 sẽ fallback hiển thị `username` hoặc gọi API lấy profile người dùng (nếu có), hoặc backend m1-core cập nhật nhẹ response login để bổ sung 2 trường này.
+2. **Xóa / Chỉnh sửa Bài học (`Lesson`):**
+   - Yêu cầu A4 nêu "giảng viên tạo, sửa, xóa bài", tuy nhiên trong `m1.yaml` hiện chỉ có:
+     - `GET /api/courses/{courseId}/lessons`
+     - `POST /api/courses/{courseId}/lessons`
+   - Chưa có endpoint `PATCH /api/lessons/{lessonId}` và `DELETE /api/lessons/{lessonId}`.
+   - *Đề xuất:* Khi triển khai bước A4, nếu cần tính năng sửa/xóa bài học, ta sẽ bổ sung endpoint nhẹ này vào `backend/src/modules/m1-core/` và `docs/openapi/m1.yaml` theo đúng quyền hạn được phép sửa lệch API của M1.
+3. **Mã phản hồi HTTP khi Upload File (`413` và `415` vs `400`):**
+   - Yêu cầu A4 nêu: "xử lý 413 và 415 khi upload".
+   - Trong `m1.yaml` hiện tại gom lỗi file không hợp lệ hoặc quá 50MB về mã `400 Bad Request`.
+   - *Đề xuất:* Frontend sẽ bắt cả lỗi `413` (Payload Too Large), `415` (Unsupported Media Type) lẫn `400` có thông điệp tương ứng từ server.
+4. **Hiển thị Buổi học đã Hủy (`CANCELLED`):**
+   - Trong OpenAPI mô tả `GET /api/courses/{courseId}/schedules` trả về các session active. Khi buổi học bị hủy (`DELETE /api/schedules/{scheduleId}`), status chuyển thành `CANCELLED`.
+   - Cần thống nhất: API có trả về buổi học `CANCELLED` trong danh sách lịch học của khóa hay không? Nếu có trả về, UI sẽ hiển thị `StatusBadge` màu xám gạch ngang; nếu backend ẩn buổi học đã hủy thì UI chỉ hiển thị thông báo toast sau khi hủy thành công.
+
+---
+
+## V. Tình trạng Sẵn sàng Triển khai (Definition of Ready)
+
+- [x] Đã nghiên cứu kỹ PRD (US-01..06, 17, 18; NFR-10, 11; EC-01, 03, 08, 09, 14, 15, 18..20, 22..24).
+- [x] Đã đối chiếu OpenAPI `common.yaml` và `m1.yaml`.
+- [x] Đã đọc `docs/frontend-contracts.md` và `docs/design-system.md`.
+- [x] **B đã merge F0a và F0b:** Thư mục `shared` và `app` đã đầy đủ hạ tầng.
+- [x] Đã kiểm tra bộ 4 lệnh kiểm tra nền tảng (`npm run lint`, `npm test`, `npm run build`, `npm run deps:check`) -> **Tất cả đều đạt 100% (Pass)**.
+- [x] Sẵn sàng chuyển sang Bước A1 (US-01 Đăng nhập) khi người dùng phê duyệt tài liệu Bước 0.
