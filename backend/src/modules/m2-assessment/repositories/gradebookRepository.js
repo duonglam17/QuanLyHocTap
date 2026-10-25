@@ -18,7 +18,8 @@ class GradebookRepository {
   async findSubmissionsByCourse(courseId, { limit, offset }, connection = null) {
     const client = connection || this.db;
     const [rows] = await client.query(
-      `SELECT s.\`id\`, s.\`assignment_id\`, s.\`student_id\`,
+      `SELECT s.\`id\`, s.\`assignment_id\`, a.\`title\` AS \`assignment_title\`,
+              s.\`student_id\`,
               s.\`original_filename\`, s.\`file_size_bytes\`, s.\`mime_type\`,
               s.\`submitted_at\`, s.\`is_late\`, s.\`late_minutes\`,
               s.\`submission_count\`, s.\`status\`,
