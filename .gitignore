@@ -18,6 +18,7 @@ coverage/
 
 # Upload khi chay thu
 uploads/
+e2e/.generated/
 
 # IDE va he dieu hanh
 .idea/
