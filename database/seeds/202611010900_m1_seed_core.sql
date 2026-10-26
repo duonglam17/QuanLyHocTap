@@ -17,13 +17,13 @@ ON DUPLICATE KEY UPDATE `name`=VALUES(`name`);
 -- 2. SEED USERS
 -- Mật khẩu mặc định: MatKhau@123
 INSERT INTO `users` (`id`, `role_id`, `username`, `email`, `password_hash`, `full_name`, `status`, `token_version`, `must_change_password`, `created_at`) VALUES
-(1, 1, 'admin', 'admin@lms.edu.vn', '$2b$10$5M8yvVbYVjNknbYI6n8PtuZ4gZqY4m4FqFkY0jO8y3tQ3yO0h9Oqu', 'Quản trị viên Hoàng', 'ACTIVE', 1, FALSE, NOW()),
-(2, 2, 'gv_mai', 'mai.nguyen@lms.edu.vn', '$2b$10$5M8yvVbYVjNknbYI6n8PtuZ4gZqY4m4FqFkY0jO8y3tQ3yO0h9Oqu', 'Cô Nguyễn Thị Mai', 'ACTIVE', 1, FALSE, NOW()),
-(3, 2, 'gv_anv', 'anv.le@lms.edu.vn', '$2b$10$5M8yvVbYVjNknbYI6n8PtuZ4gZqY4m4FqFkY0jO8y3tQ3yO0h9Oqu', 'Thầy Lê Văn An', 'ACTIVE', 1, FALSE, NOW()),
-(4, 3, 'sv_nam', 'nam.tran@lms.edu.vn', '$2b$10$5M8yvVbYVjNknbYI6n8PtuZ4gZqY4m4FqFkY0jO8y3tQ3yO0h9Oqu', 'Trần Văn Nam', 'ACTIVE', 1, FALSE, NOW()),
-(5, 3, 'sv_hoa', 'hoa.pham@lms.edu.vn', '$2b$10$5M8yvVbYVjNknbYI6n8PtuZ4gZqY4m4FqFkY0jO8y3tQ3yO0h9Oqu', 'Phạm Thị Hoa', 'ACTIVE', 1, FALSE, NOW()),
-(6, 3, 'sv_khoa', 'khoa.dang@lms.edu.vn', '$2b$10$5M8yvVbYVjNknbYI6n8PtuZ4gZqY4m4FqFkY0jO8y3tQ3yO0h9Oqu', 'Đặng Đăng Khoa', 'LOCKED', 1, FALSE, NOW())
-ON DUPLICATE KEY UPDATE `username`=VALUES(`username`);
+(1, 1, 'admin', 'admin@lms.edu.vn', '$2b$10$7bRhTeuijGxQONQ/XCyWT.aKURFSUyEdELUHFx.Zf/SNYysVqvrrS', 'Quản trị viên Hoàng', 'ACTIVE', 1, FALSE, NOW()),
+(2, 2, 'gv_mai', 'mai.nguyen@lms.edu.vn', '$2b$10$7bRhTeuijGxQONQ/XCyWT.aKURFSUyEdELUHFx.Zf/SNYysVqvrrS', 'Cô Nguyễn Thị Mai', 'ACTIVE', 1, FALSE, NOW()),
+(3, 2, 'gv_anv', 'anv.le@lms.edu.vn', '$2b$10$7bRhTeuijGxQONQ/XCyWT.aKURFSUyEdELUHFx.Zf/SNYysVqvrrS', 'Thầy Lê Văn An', 'ACTIVE', 1, FALSE, NOW()),
+(4, 3, 'sv_nam', 'nam.tran@lms.edu.vn', '$2b$10$7bRhTeuijGxQONQ/XCyWT.aKURFSUyEdELUHFx.Zf/SNYysVqvrrS', 'Trần Văn Nam', 'ACTIVE', 1, FALSE, NOW()),
+(5, 3, 'sv_hoa', 'hoa.pham@lms.edu.vn', '$2b$10$7bRhTeuijGxQONQ/XCyWT.aKURFSUyEdELUHFx.Zf/SNYysVqvrrS', 'Phạm Thị Hoa', 'ACTIVE', 1, FALSE, NOW()),
+(6, 3, 'sv_khoa', 'khoa.dang@lms.edu.vn', '$2b$10$7bRhTeuijGxQONQ/XCyWT.aKURFSUyEdELUHFx.Zf/SNYysVqvrrS', 'Đặng Đăng Khoa', 'LOCKED', 1, FALSE, NOW())
+ON DUPLICATE KEY UPDATE `username`=VALUES(`username`), `password_hash`=VALUES(`password_hash`);
 
 -- 3. SEED COURSE
 INSERT INTO `courses` (`id`, `code`, `title`, `description`, `semester`, `instructor_id`, `enrollment_key`, `status`, `created_at`) VALUES

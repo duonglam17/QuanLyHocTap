@@ -8,9 +8,9 @@ SET time_zone = '+07:00';
 SET foreign_key_checks = 0;
 
 -- 8. SEED QUIZ, QUESTIONS & OPTIONS
-INSERT INTO `quizzes` (`id`, `course_id`, `title`, `description`, `duration_minutes`, `open_time`, `close_time`, `show_score_immediately`, `status`, `has_attempts`, `created_at`) VALUES
-(1, 1, 'Kiểm tra giữa kỳ Trắc nghiệm', 'Đề kiểm tra trắc nghiệm 30 phút gồm các kiến thức tổng quan về Web và CSDL. Mỗi câu hỏi chỉ có 1 đáp án đúng duy nhất.', 30, '2026-11-01 08:00:00', '2026-11-30 22:00:00', TRUE, 'PUBLISHED', FALSE, NOW())
-ON DUPLICATE KEY UPDATE `title`=VALUES(`title`);
+INSERT INTO `quizzes` (`id`, `course_id`, `creator_id`, `title`, `description`, `duration_minutes`, `open_time`, `close_time`, `show_score_immediately`, `status`, `has_attempts`, `created_at`) VALUES
+(1, 1, 2, 'Kiểm tra giữa kỳ Trắc nghiệm', 'Đề kiểm tra trắc nghiệm 30 phút gồm các kiến thức tổng quan về Web và CSDL. Mỗi câu hỏi chỉ có 1 đáp án đúng duy nhất.', 30, '2026-11-01 08:00:00', '2026-11-30 22:00:00', TRUE, 'PUBLISHED', FALSE, NOW())
+ON DUPLICATE KEY UPDATE `title`=VALUES(`title`), `creator_id`=VALUES(`creator_id`);
 
 -- Câu hỏi 1, 2, 3
 INSERT INTO `questions` (`id`, `quiz_id`, `content`, `order_index`, `created_at`) VALUES

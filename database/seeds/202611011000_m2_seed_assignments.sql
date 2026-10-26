@@ -8,9 +8,9 @@ SET time_zone = '+07:00';
 SET foreign_key_checks = 0;
 
 -- 7. SEED ASSIGNMENT & SUBMISSION
-INSERT INTO `assignments` (`id`, `course_id`, `title`, `description`, `deadline`, `max_score`, `allow_late`, `status`, `created_at`) VALUES
-(1, 1, 'Bài tập lớn 1: Thiết kế Database & API Contract', 'Yêu cầu: Thiết kế ERD, viết schema.sql chuẩn MySQL và tài liệu OpenAPI 3.0. Nộp báo cáo PDF hoặc mã nguồn ZIP.', '2026-11-30 23:59:59', 10.00, TRUE, 'OPEN', NOW())
-ON DUPLICATE KEY UPDATE `title`=VALUES(`title`);
+INSERT INTO `assignments` (`id`, `course_id`, `created_by`, `title`, `description`, `deadline`, `max_score`, `allow_late`, `status`, `created_at`) VALUES
+(1, 1, 2, 'Bài tập lớn 1: Thiết kế Database & API Contract', 'Yêu cầu: Thiết kế ERD, viết schema.sql chuẩn MySQL và tài liệu OpenAPI 3.0. Nộp báo cáo PDF hoặc mã nguồn ZIP.', '2026-11-30 23:59:59', 10.00, TRUE, 'OPEN', NOW())
+ON DUPLICATE KEY UPDATE `title`=VALUES(`title`), `created_by`=VALUES(`created_by`);
 
 -- Sinh viên sv_nam đã nộp bài tập 1
 INSERT INTO `submissions` (`id`, `assignment_id`, `student_id`, `original_filename`, `file_uuid`, `file_path`, `file_size_bytes`, `mime_type`, `submitted_at`, `is_late`, `late_minutes`, `submission_count`, `status`, `created_at`) VALUES
