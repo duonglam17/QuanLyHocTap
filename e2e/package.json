@@ -1,0 +1,19 @@
+{
+  "name": "lms-mini-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:smoke": "playwright test specs/smoke.spec.js",
+    "test:ui": "playwright test --ui",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report .generated/report",
+    "db:reset": "node scripts/database.js reset",
+    "db:migrate": "node scripts/database.js migrate",
+    "db:seed": "node scripts/database.js seed"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "dotenv": "^16.4.7"
+  }
+}

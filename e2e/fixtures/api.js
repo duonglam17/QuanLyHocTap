@@ -1,0 +1,25 @@
+export async function createCourse(session, values = {}) {
+  const unique = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  return session.api('/courses', {
+    method: 'POST',
+    body: {
+      code: `E2E${unique}`.slice(0, 20),
+      title: `Khóa học E2E ${unique}`,
+      description: 'Dữ liệu được tạo tự động cho kiểm thử E2E.',
+      semester: 'E2E-2026',
+      enrollmentKey: `E${unique}`.slice(0, 8),
+      ...values
+    }
+  });
+}
+
+export async function publishCourse(session, courseId) {
+  return session.api(`/courses/${courseId}/publish`, { method: 'PATCH' });
+}
+
+export async function enrollStudent(session, enrollmentKey) {
+  return session.api('/courses/enroll', {
+    method: 'POST',
+    body: { enrollment_key: enrollmentKey }
+  });
+}
