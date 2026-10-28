@@ -68,6 +68,22 @@ async function getAppliedMigrations(connection) {
     return new Set(rows.map(r => r.migration_name));
 }
 
+// Danh sách migration nền tảng bắt buộc phải tạo bảng trước các migration sửa đổi
+const BASELINE_MIGRATIONS = [
+    '202611010900_m1_create_core_tables.sql',
+    '202611011000_m1_add_login_failure_window.sql',
+    '202611011000_m2_create_assignment_tables.sql',
+    '202611011100_m3_create_quiz_interaction_tables.sql',
+    '202611011101_m3_extend_notifications_payload.sql'
+];
+
+function sortMigrationFiles(files) {
+    const baselineSet = new Set(BASELINE_MIGRATIONS);
+    const baselineFiles = BASELINE_MIGRATIONS.filter(f => files.includes(f));
+    const nonBaselineFiles = files.filter(f => !baselineSet.has(f)).sort();
+    return [...baselineFiles, ...nonBaselineFiles];
+}
+
 async function runMigrations() {
     console.log('===========================================================');
     console.log('   BẮT ĐẦU CHẠY DATABASE MIGRATIONS - LMS MINI');
@@ -78,9 +94,8 @@ async function runMigrations() {
         process.exit(1);
     }
 
-    const files = fs.readdirSync(MIGRATIONS_DIR)
-        .filter(f => f.endsWith('.sql'))
-        .sort(); // Sắp xếp theo tên (thứ tự timestamp YYYYMMDDHHMM)
+    const allFiles = fs.readdirSync(MIGRATIONS_DIR).filter(f => f.endsWith('.sql'));
+    const files = sortMigrationFiles(allFiles);
 
     if (files.length === 0) {
         console.log('[MIGRATE] Không có file migration nào trong database/migrations/.');
@@ -145,5 +160,5 @@ if (require.main === module) {
     });
 }
 
-module.exports = { runMigrations };
+module.exports = { runMigrations, sortMigrationFiles };
 
