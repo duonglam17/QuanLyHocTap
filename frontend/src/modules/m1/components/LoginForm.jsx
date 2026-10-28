@@ -81,7 +81,7 @@ export function LoginForm({ onSubmit, submitting, serverError }) {
             value={password}
           />
           <button
-            aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+            aria-label={showPassword ? 'Ẩn ký tự' : 'Hiện ký tự'}
             className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             disabled={submitting}
             onClick={() => setShowPassword((prev) => !prev)}

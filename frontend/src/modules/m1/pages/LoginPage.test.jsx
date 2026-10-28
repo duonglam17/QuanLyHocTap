@@ -61,12 +61,12 @@ describe('M1 LoginPage & LoginForm (US-01)', () => {
     const passwordInput = screen.getByLabelText(/^Mật khẩu/);
     expect(passwordInput).toHaveAttribute('type', 'password');
 
-    const toggleButton = screen.getByRole('button', { name: 'Hiện mật khẩu' });
+    const toggleButton = screen.getByRole('button', { name: 'Hiện ký tự' });
     fireEvent.click(toggleButton);
     expect(passwordInput).toHaveAttribute('type', 'text');
-    expect(screen.getByRole('button', { name: 'Ẩn mật khẩu' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ẩn ký tự' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Ẩn mật khẩu' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ẩn ký tự' }));
     expect(passwordInput).toHaveAttribute('type', 'password');
   });
 
