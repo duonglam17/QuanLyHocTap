@@ -117,6 +117,29 @@ describe('AssignmentTab', () => {
     expect(within(dialog).getByText('Hạn nộp phải hợp lệ.')).toBeInTheDocument();
   });
 
+  it.each([
+    [401, 'Phiên đăng nhập đã hết hạn.'],
+    [403, 'Bạn không có quyền giao bài tập.'],
+    [409, 'Khóa học đã được lưu trữ.'],
+    [429, 'Bạn đã tạo quá nhiều bài tập.']
+  ])('shows the server message when creating an assignment returns %i', async (status, message) => {
+    vi.spyOn(api, 'get').mockResolvedValue({ data: [] });
+    vi.spyOn(api, 'post').mockRejectedValue(Object.assign(new Error(message), { status }));
+    const user = userEvent.setup();
+    renderTab();
+
+    await user.click(await screen.findByRole('button', { name: 'Tạo bài tập' }));
+    const dialog = screen.getByRole('dialog');
+    await user.type(within(dialog).getByLabelText(/Tiêu đề/), 'Bài tập mới');
+    fireEvent.change(within(dialog).getByLabelText(/Hạn nộp/), {
+      target: { value: '2030-12-01T23:59' }
+    });
+    await user.click(within(dialog).getByRole('button', { name: 'Giao bài tập' }));
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(message);
+    expect(within(dialog).getByRole('button', { name: 'Giao bài tập' })).toBeEnabled();
+  });
+
   it('shows submission status to students and does not expose assignment editing', async () => {
     vi.spyOn(api, 'get').mockResolvedValue({
       data: [{

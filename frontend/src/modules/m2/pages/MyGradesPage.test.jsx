@@ -157,4 +157,20 @@ describe('MyGradesPage (US-13)', () => {
     expect(await screen.findByText('Không tải được bảng điểm.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Thử lại' })).toBeInTheDocument();
   });
+
+  it.each([
+    [401, 'Phiên đăng nhập đã hết hạn.'],
+    [403, 'Bạn không có quyền xem bảng điểm này.'],
+    [409, 'Bảng điểm đang được cập nhật.'],
+    [422, 'Mã khóa học không hợp lệ.'],
+    [429, 'Bạn đã gửi quá nhiều yêu cầu.']
+  ])('shows the exact gradebook API message for status %i', async (status, message) => {
+    gradesApi.listCoursesForGrades.mockResolvedValue({ items: courses });
+    gradesApi.getMyCourseGrades.mockRejectedValue(Object.assign(new Error(message), { status }));
+
+    renderPage();
+
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Thử lại' })).toBeInTheDocument();
+  });
 });

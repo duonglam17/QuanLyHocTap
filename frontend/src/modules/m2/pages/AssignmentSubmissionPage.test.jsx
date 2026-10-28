@@ -93,11 +93,13 @@ describe('AssignmentSubmissionPage (US-08)', () => {
 
     expect(submitButton).toBeDisabled();
     expect(screen.getByRole('progressbar', { name: 'Tiến trình tải tệp' })).toHaveValue(45);
+    await user.click(submitButton);
     expect(submissionApi.submitAssignment).toHaveBeenCalledWith(
       '42',
       file,
       expect.any(Function)
     );
+    expect(submissionApi.submitAssignment).toHaveBeenCalledTimes(1);
 
     finishUpload({
       assignment_id: 42,
@@ -141,5 +143,96 @@ describe('AssignmentSubmissionPage (US-08)', () => {
       'Tệp bài nộp không được vượt quá 20MB.'
     );
     expect(screen.getByRole('button', { name: 'Nộp bài' })).toBeEnabled();
+  });
+
+  it.each([
+    [401, 'Phiên đăng nhập đã hết hạn.'],
+    [403, 'Bạn không có quyền nộp bài tập này.'],
+    [409, 'Bài tập đã được khóa.'],
+    [422, 'Tệp bài làm không hợp lệ.'],
+    [429, 'Bạn đã nộp quá nhiều lần.']
+  ])('shows the server message for upload status %i', async (status, message) => {
+    const user = userEvent.setup();
+    submissionApi.getAssignment.mockResolvedValue(assignment);
+    submissionApi.getMySubmission.mockResolvedValue(null);
+    submissionApi.submitAssignment.mockRejectedValue(Object.assign(new Error(message), { status }));
+
+    renderPage();
+    await screen.findByText('Báo cáo cuối kỳ');
+    await screen.findByText('Chưa có bài nộp');
+    await user.upload(
+      screen.getByLabelText(/Tệp bài làm/),
+      new File(['bài làm'], 'baocao.pdf', { type: 'application/pdf' })
+    );
+    await user.click(screen.getByRole('button', { name: 'Nộp bài' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+    expect(screen.getByRole('button', { name: 'Nộp bài' })).toBeEnabled();
+  });
+
+  it('shows the late-submission status and server-reported lateness after upload', async () => {
+    const user = userEvent.setup();
+    submissionApi.getAssignment.mockResolvedValue(assignment);
+    submissionApi.getMySubmission.mockResolvedValue(null);
+    submissionApi.submitAssignment.mockResolvedValue({
+      assignment_id: 42,
+      original_filename: 'baocao-tre.pdf',
+      submitted_at: '2026-12-12T10:00:00.000Z',
+      is_late: true,
+      late_minutes: 480,
+      submission_count: 1,
+      status: 'SUBMITTED_LATE'
+    });
+
+    renderPage();
+    await screen.findByText('Báo cáo cuối kỳ');
+    await screen.findByText('Chưa có bài nộp');
+    await user.upload(
+      screen.getByLabelText(/Tệp bài làm/),
+      new File(['bài làm'], 'baocao-tre.pdf', { type: 'application/pdf' })
+    );
+    await user.click(screen.getByRole('button', { name: 'Nộp bài' }));
+
+    expect(await screen.findByText('Nộp trễ 480 phút')).toBeInTheDocument();
+    expect(screen.getByText(/Tệp: baocao-tre\.pdf/)).toBeInTheDocument();
+    expect(screen.getByText('Số lần nộp: 1')).toBeInTheDocument();
+  });
+
+  it('resubmits a selected file and displays the latest server receipt', async () => {
+    const user = userEvent.setup();
+    submissionApi.getAssignment.mockResolvedValue(assignment);
+    submissionApi.getMySubmission.mockResolvedValue({
+      original_filename: 'baocao-v1.pdf',
+      submitted_at: '2026-12-10T08:30:00.000Z',
+      is_late: false,
+      late_minutes: 0,
+      submission_count: 1,
+      status: 'SUBMITTED'
+    });
+    submissionApi.submitAssignment.mockResolvedValue({
+      assignment_id: 42,
+      original_filename: 'baocao-v2.pdf',
+      submitted_at: '2026-12-11T08:30:00.000Z',
+      is_late: false,
+      late_minutes: 0,
+      submission_count: 2,
+      status: 'SUBMITTED'
+    });
+
+    renderPage();
+    await screen.findByText(/Tệp: baocao-v1\.pdf/);
+    await user.upload(
+      screen.getByLabelText(/Tệp bài làm/),
+      new File(['bài làm mới'], 'baocao-v2.pdf', { type: 'application/pdf' })
+    );
+    await user.click(screen.getByRole('button', { name: 'Nộp lại bài' }));
+
+    expect(submissionApi.submitAssignment).toHaveBeenCalledWith(
+      '42',
+      expect.objectContaining({ name: 'baocao-v2.pdf' }),
+      expect.any(Function)
+    );
+    expect(await screen.findByText(/Tệp: baocao-v2\.pdf/)).toBeInTheDocument();
+    expect(screen.getByText('Số lần nộp: 2')).toBeInTheDocument();
   });
 });

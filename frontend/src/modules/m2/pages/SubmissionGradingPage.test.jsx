@@ -129,6 +129,45 @@ describe('SubmissionGradingPage (US-09)', () => {
     expect(await screen.findAllByText('Đã chấm')).toHaveLength(2);
   });
 
+  it.each([
+    [401, 'Phiên đăng nhập đã hết hạn.'],
+    [403, 'Bạn không có quyền chấm bài này.'],
+    [409, 'Bài nộp không còn được sửa.'],
+    [429, 'Bạn đã gửi quá nhiều yêu cầu chấm điểm.']
+  ])('shows the server message when saving a grade returns %i', async (status, message) => {
+    gradingApi.listCourseSubmissions.mockResolvedValue(response());
+    gradingApi.gradeSubmission.mockRejectedValue(Object.assign(new Error(message), { status }));
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findAllByText('Bài tập tuần 4');
+    await user.clear(screen.getByLabelText(/^Điểm/));
+    await user.type(screen.getByLabelText(/^Điểm/), '8.5');
+    await user.click(screen.getByRole('button', { name: 'Lưu điểm' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+  });
+
+  it('shows a server 422 validation message beside the score field', async () => {
+    gradingApi.listCourseSubmissions.mockResolvedValue(response());
+    gradingApi.gradeSubmission.mockRejectedValue(Object.assign(
+      new Error('Điểm phải theo bước 0.25.'),
+      {
+        status: 422,
+        details: [{ field: 'score', message: 'Điểm phải theo bước 0.25.' }]
+      }
+    ));
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findAllByText('Bài tập tuần 4');
+    await user.clear(screen.getByLabelText(/^Điểm/));
+    await user.type(screen.getByLabelText(/^Điểm/), '8.5');
+    await user.click(screen.getByRole('button', { name: 'Lưu điểm' }));
+
+    expect(await screen.findByText('Điểm phải theo bước 0.25.')).toBeInTheDocument();
+  });
+
   it('downloads the selected submission through the authenticated API helper', async () => {
     const user = userEvent.setup();
     gradingApi.listCourseSubmissions.mockResolvedValue(response());
