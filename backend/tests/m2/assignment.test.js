@@ -1,13 +1,16 @@
 const assert = require('node:assert/strict');
+const express = require('express');
 const jwt = require('jsonwebtoken');
 const request = require('supertest');
 const test = require('node:test');
 
 const config = require('../../src/common/config');
 const db = require('../../src/common/db');
+const errorHandler = require('../../src/common/errorHandler');
 const { ForbiddenError, ValidationError } = require('../../src/common/errors');
 const { createCourseAccessFake, createNotificationsFake } = require('../../src/contracts/fakes');
 const { registerPort } = require('../../src/contracts');
+const { router: assignmentRouter } = require('../../src/modules/m2-assessment/routes/assignmentRoutes');
 const AssignmentService = require('../../src/modules/m2-assessment/services/assignmentService');
 
 function createCourseAccess({ owner = true, writable = true } = {}) {
@@ -311,8 +314,10 @@ test('US-07 HTTP endpoint creates only for the course owner', async (t) => {
   registerPort('courseAccess', courseAccess);
   registerPort('notifications', notifications);
 
-  const { createApp } = require('../../src/app');
-  const app = createApp();
+  const app = express();
+  app.use(express.json());
+  app.use('/api', assignmentRouter);
+  app.use(errorHandler);
   const token = (id) =>
     jwt.sign({ id, role: 'GIANG_VIEN', token_version: 0 }, config.JWT_SECRET, {
       expiresIn: '5m'
@@ -341,4 +346,37 @@ test('US-07 HTTP endpoint creates only for the course owner', async (t) => {
 
   assert.equal(denied.status, 403);
   assert.equal(notifications.sentNotifications.length, 1);
+});
+
+test('US-07 HTTP endpoint returns 401 without auth, 403 for wrong role, and 422 for invalid input', async (t) => {
+  const originalQuery = db.query;
+  db.query = async () => [[{ status: 'ACTIVE', token_version: 0 }], []];
+  t.after(() => {
+    db.query = originalQuery;
+  });
+
+  const app = express();
+  app.use(express.json());
+  app.use('/api', assignmentRouter);
+  app.use(errorHandler);
+  const token = (id, role) =>
+    jwt.sign({ id, role, token_version: 0 }, config.JWT_SECRET, { expiresIn: '5m' });
+
+  const unauthenticated = await request(app)
+    .post('/api/courses/3/assignments')
+    .send({ title: 'Essay', due_date: '2099-10-22T10:00:00.000Z' });
+  assert.equal(unauthenticated.status, 401);
+
+  const wrongRole = await request(app)
+    .post('/api/courses/3/assignments')
+    .set('Authorization', `Bearer ${token(5, 'SINH_VIEN')}`)
+    .send({ title: 'Essay', due_date: '2099-10-22T10:00:00.000Z' });
+  assert.equal(wrongRole.status, 403);
+
+  const invalidInput = await request(app)
+    .post('/api/courses/3/assignments')
+    .set('Authorization', `Bearer ${token(8, 'GIANG_VIEN')}`)
+    .send({ title: '', due_date: '2099-10-22T10:00:00.000Z' });
+  assert.equal(invalidInput.status, 422);
+  assert.equal(invalidInput.body.details[0].field, 'title');
 });

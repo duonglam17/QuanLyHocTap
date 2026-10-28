@@ -11,7 +11,7 @@ const test = require('node:test');
 const config = require('../../src/common/config');
 const db = require('../../src/common/db');
 const errorHandler = require('../../src/common/errorHandler');
-const { ForbiddenError, ValidationError } = require('../../src/common/errors');
+const { ConflictError, ForbiddenError, ValidationError } = require('../../src/common/errors');
 const {
   createCourseAccessFake,
   createNotificationsFake
@@ -22,7 +22,7 @@ const GradebookRepository = require('../../src/modules/m2-assessment/repositorie
 const GradeService = require('../../src/modules/m2-assessment/services/gradeService');
 const { createGradeRouter } = require('../../src/modules/m2-assessment/routes/gradeRoutes');
 
-function createGradeFixture({ owner = true, submission = null } = {}) {
+function createGradeFixture({ owner = true, writable = true, submission = null } = {}) {
   const events = [];
   const notifications = createNotificationsFake();
   const courseAccess = {
@@ -39,6 +39,9 @@ function createGradeFixture({ owner = true, submission = null } = {}) {
     },
     async assertCourseWritable(courseId) {
       assert.equal(courseId, 9);
+      if (!writable) {
+        throw new ConflictError('Khóa học đã lưu trữ.', null, 'COURSE_ARCHIVED');
+      }
     }
   };
   const targetSubmission = submission || {
@@ -162,6 +165,75 @@ test('US-09 rejects a grader who does not own the submission course', async () =
   );
   assert.deepEqual(events, ['begin', 'lock-submission']);
   assert.equal(notifications.sentNotifications.length, 0);
+});
+
+test('US-09 returns 404 for a missing submission and 409 for a read-only course', async () => {
+  const missing = createGradeFixture();
+  missing.gradeRepository.findSubmissionForGradeForUpdate = async () => null;
+  await assert.rejects(
+    missing.service.gradeSubmission({
+      submissionId: 999,
+      graderId: 3,
+      score: 8
+    }),
+    (error) => error.statusCode === 404
+  );
+
+  const archived = createGradeFixture({ writable: false });
+  await assert.rejects(
+    archived.service.gradeSubmission({
+      submissionId: 12,
+      graderId: 3,
+      score: 8
+    }),
+    (error) => error instanceof ConflictError && error.statusCode === 409
+  );
+  assert.equal(archived.events.includes('upsert-grade'), false);
+});
+
+test('US-09 HTTP endpoint returns 401, 403, 404, and 422 for grading requests', async (t) => {
+  const originalQuery = db.query;
+  db.query = async () => [[{ status: 'ACTIVE', token_version: 0 }], []];
+  t.after(() => {
+    db.query = originalQuery;
+  });
+
+  const fixture = createGradeFixture();
+  const app = express();
+  app.use(express.json());
+  app.use('/api', createGradeRouter({
+    gradeController: new GradeController({ gradeService: fixture.service })
+  }));
+  app.use(errorHandler);
+  const token = (id, role) =>
+    jwt.sign({ id, role, token_version: 0 }, config.JWT_SECRET, { expiresIn: '5m' });
+
+  const unauthenticated = await request(app)
+    .post('/api/submissions/12/grade')
+    .send({ score: 8 });
+  assert.equal(unauthenticated.status, 401);
+
+  const wrongRole = await request(app)
+    .post('/api/submissions/12/grade')
+    .set('Authorization', `Bearer ${token(5, 'SINH_VIEN')}`)
+    .send({ score: 8 });
+  assert.equal(wrongRole.status, 403);
+
+  const missingSubmissionRepository = fixture.gradeRepository;
+  const originalFindSubmission = missingSubmissionRepository.findSubmissionForGradeForUpdate;
+  missingSubmissionRepository.findSubmissionForGradeForUpdate = async () => null;
+  const missing = await request(app)
+    .post('/api/submissions/999/grade')
+    .set('Authorization', `Bearer ${token(3, 'GIANG_VIEN')}`)
+    .send({ score: 8 });
+  missingSubmissionRepository.findSubmissionForGradeForUpdate = originalFindSubmission;
+  assert.equal(missing.status, 404);
+
+  const invalidScore = await request(app)
+    .post('/api/submissions/12/grade')
+    .set('Authorization', `Bearer ${token(3, 'GIANG_VIEN')}`)
+    .send({ score: 10.5 });
+  assert.equal(invalidScore.status, 422);
 });
 
 test('US-09 validates the 0 to 10 range and 0.25 score increments', async () => {

@@ -16,6 +16,12 @@ test('M2 init registers the assessmentUsage Port', () => {
 });
 
 test('assessmentUsage Port checks course and user data against MySQL', async (t) => {
+  const testDatabaseName = process.env.M2_TEST_DB_NAME;
+  if (!testDatabaseName || !/_test$/.test(testDatabaseName)) {
+    t.skip('Set M2_TEST_DB_NAME to a dedicated database ending in _test.');
+    return;
+  }
+
   let connection;
   try {
     connection = await mysql.createConnection({
@@ -23,7 +29,7 @@ test('assessmentUsage Port checks course and user data against MySQL', async (t)
       port: config.DB_PORT,
       user: config.DB_USER,
       password: config.DB_PASSWORD,
-      database: config.DB_NAME,
+      database: testDatabaseName,
       connectTimeout: 2000
     });
   } catch (error) {

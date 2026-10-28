@@ -9,6 +9,7 @@ const db = require('../../src/common/db');
 const errorHandler = require('../../src/common/errorHandler');
 const { ConflictError, ForbiddenError } = require('../../src/common/errors');
 const { createCourseAccessFake } = require('../../src/contracts/fakes');
+const SubmissionController = require('../../src/modules/m2-assessment/controllers/submissionController');
 const { createSubmissionRouter } = require('../../src/modules/m2-assessment/routes/submissionRoutes');
 const SubmissionRepository = require('../../src/modules/m2-assessment/repositories/submissionRepository');
 const SubmissionService = require('../../src/modules/m2-assessment/services/submissionService');
@@ -401,6 +402,86 @@ test('US-08 reads only the authenticated student submission after enrollment che
   assert.equal(result, savedSubmission);
   assert.equal(requestedAssignmentId, 4);
   assert.equal(requestedStudentId, 5);
+});
+
+test('US-08 rejects invalid IDs, missing assignments, and archived courses with the expected status', async () => {
+  const invalidId = createFixture();
+  await assert.rejects(
+    invalidId.service.submitAssignment({
+      assignmentId: 'not-an-id',
+      studentId: 5,
+      upload
+    }),
+    (error) => error.statusCode === 422
+  );
+
+  const missingAssignment = createFixture();
+  missingAssignment.repository.findAssignmentForUpdate = async () => null;
+  const missingResponse = await missingAssignment.service.submitAssignment({
+    assignmentId: 4,
+    studentId: 5,
+    upload
+  }).catch((error) => error);
+  assert.equal(missingResponse.statusCode, 404);
+  assert.deepEqual(missingAssignment.events, ['begin', 'rollback']);
+
+  const archived = createFixture({ courseStatus: 'ARCHIVED' });
+  await assert.rejects(
+    archived.service.submitAssignment({ assignmentId: 4, studentId: 5, upload }),
+    (error) => error instanceof ConflictError && error.statusCode === 409
+  );
+});
+
+test('US-08 HTTP endpoint returns 401, 403, and 400 for auth, role, and missing file errors', async (t) => {
+  const originalQuery = db.query;
+  db.query = async () => [[{ status: 'ACTIVE', token_version: 0 }], []];
+  t.after(() => {
+    db.query = originalQuery;
+  });
+
+  const fixture = createFixture();
+  const app = express();
+  app.use(
+    '/api',
+    createSubmissionRouter({
+      submissionController: new SubmissionController(fixture.service),
+      uploadLimiter: (req, res, next) => next()
+    })
+  );
+  app.use(errorHandler);
+  const token = (id, role) =>
+    jwt.sign({ id, role, token_version: 0 }, config.JWT_SECRET, { expiresIn: '5m' });
+
+  const unauthenticated = await request(app).post('/api/assignments/4/submissions');
+  assert.equal(unauthenticated.status, 401);
+
+  const wrongRole = await request(app)
+    .post('/api/assignments/4/submissions')
+    .set('Authorization', `Bearer ${token(3, 'GIANG_VIEN')}`);
+  assert.equal(wrongRole.status, 403);
+
+  const missingFile = await request(app)
+    .post('/api/assignments/4/submissions')
+    .set('Authorization', `Bearer ${token(5, 'SINH_VIEN')}`)
+    .field('description', 'Bài làm');
+  assert.equal(missingFile.status, 400);
+  assert.equal(missingFile.body.message, 'Vui lòng đính kèm tệp bài làm.');
+
+  const archivedFixture = createFixture({ courseStatus: 'ARCHIVED' });
+  const archivedApp = express();
+  archivedApp.use(
+    '/api',
+    createSubmissionRouter({
+      submissionController: new SubmissionController(archivedFixture.service),
+      uploadLimiter: (req, res, next) => next()
+    })
+  );
+  archivedApp.use(errorHandler);
+  const archivedResponse = await request(archivedApp)
+    .post('/api/assignments/4/submissions')
+    .set('Authorization', `Bearer ${token(5, 'SINH_VIEN')}`)
+    .attach('file', upload.buffer, upload.originalname);
+  assert.equal(archivedResponse.status, 409);
 });
 
 test('US-08 returns HTTP 413 for uploads larger than the accepted file size', async (t) => {

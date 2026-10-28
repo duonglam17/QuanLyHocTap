@@ -1,4 +1,5 @@
 const {
+  BadRequestError,
   ForbiddenError,
   NotFoundError,
   ValidationError
@@ -97,7 +98,7 @@ class SubmissionService {
       throw new ValidationError('Mã bài tập và mã sinh viên là bắt buộc.');
     }
     if (!upload || !Buffer.isBuffer(upload.buffer) || upload.buffer.length === 0) {
-      throw new ValidationError('Vui lòng đính kèm tệp bài làm.');
+      throw new BadRequestError('Vui lòng đính kèm tệp bài làm.');
     }
     if (upload.buffer.length > MAX_UPLOAD_BYTES) {
       throw new ValidationError('Tệp bài nộp không được vượt quá 20MB.');
