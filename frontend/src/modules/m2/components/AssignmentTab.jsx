@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ClipboardCheck, FileSpreadsheet, Pencil, Plus } from 'lucide-react';
 import { useApiMutation } from '../../../shared/hooks/useApiMutation.js';
 import { useApiQuery } from '../../../shared/hooks/useApiQuery.js';
@@ -281,7 +281,11 @@ export function AssignmentTab({ courseId, course, role, isOwner = false }) {
             {items.map((assignment) => (
               <li className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between" key={assignment.id}>
                 <div className="grid min-w-0 gap-2">
-                  <h3 className="font-medium">{assignment.title}</h3>
+                  <h3 className="font-medium">
+                    <Link className="hover:underline text-primary" to={`/assignments/${assignment.id}`}>
+                      {assignment.title}
+                    </Link>
+                  </h3>
                   {assignment.description ? (
                     <p className="whitespace-pre-wrap text-sm text-muted-foreground">
                       {assignment.description}
