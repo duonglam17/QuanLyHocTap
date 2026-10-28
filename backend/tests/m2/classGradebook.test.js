@@ -216,7 +216,7 @@ test('US-14 streams CSV with UTF-8 BOM, formula escaping, and the full roster', 
   t.after(() => {
     db.query = originalQuery;
   });
-  const token = jwt.sign({ user_id: 3, role: 'GIANG_VIEN', token_version: 0 }, config.JWT_SECRET, {
+  const token = jwt.sign({ id: 3, user_id: 3, role: 'GIANG_VIEN', token_version: 0 }, config.JWT_SECRET, {
     expiresIn: '5m'
   });
 
@@ -265,4 +265,29 @@ test('US-14 contract fakes paginate enrolled students and expose course quiz sco
   assert.deepEqual(await quizResults.getQuizScoresForCourse(10, [1, 2]), [
     { quizId: 5, studentId: 1, score: 8 }
   ]);
+});
+
+test('US-14 HTTP endpoint returns paginated class gradebook as JSON', async (t) => {
+  const { service } = createFixture();
+  const controller = new ClassGradebookController(service);
+  const app = express();
+  app.use('/api', createClassGradebookRouter({ controller }));
+  app.use(errorHandler);
+  const originalQuery = db.query;
+  db.query = async () => [[{ status: 'ACTIVE', token_version: 0 }], []];
+  t.after(() => {
+    db.query = originalQuery;
+  });
+  const token = jwt.sign({ id: 3, user_id: 3, role: 'GIANG_VIEN', token_version: 0 }, config.JWT_SECRET, {
+    expiresIn: '5m'
+  });
+
+  const response = await request(app)
+    .get('/api/courses/8/grades?page=1')
+    .set('Authorization', `Bearer ${token}`);
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.success, true);
+  assert.ok(Array.isArray(response.body.data));
+  assert.ok(response.body.pagination);
 });

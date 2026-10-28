@@ -447,3 +447,38 @@ test('US-09 repository updates grades by the unique submission key with paramete
   assert.match(statements[0].sql, /ON DUPLICATE KEY UPDATE/);
   assert.deepEqual(statements[0].params, [12, 3, 8.5, 'Sanitized']);
 });
+
+test('US-09 HTTP endpoint lists course submissions for grading', async (t) => {
+  const graderId = 3;
+  const originalQuery = db.query;
+  db.query = async () => [[{ status: 'ACTIVE', token_version: 0 }], []];
+  t.after(() => {
+    db.query = originalQuery;
+  });
+  const gradeController = new GradeController({
+    gradeService: {
+      async listCourseSubmissions({ courseId, graderId: reqGraderId }) {
+        assert.equal(courseId, '9');
+        assert.equal(reqGraderId, graderId);
+        return {
+          submissions: [{ id: 12, studentName: 'Student A', status: 'SUBMITTED' }],
+          pagination: { page: 1, limit: 10, total: 1, totalPages: 1 }
+        };
+      }
+    }
+  });
+  const app = express();
+  app.use('/api', createGradeRouter({ gradeController }));
+  app.use(errorHandler);
+  const token = jwt.sign({ id: graderId, role: 'GIANG_VIEN', token_version: 0 }, config.JWT_SECRET, {
+    expiresIn: '5m'
+  });
+
+  const response = await request(app)
+    .get('/api/courses/9/grades/submissions?page=1&page_size=10')
+    .set('Authorization', `Bearer ${token}`);
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.success, true);
+  assert.equal(response.body.submissions.length, 1);
+});

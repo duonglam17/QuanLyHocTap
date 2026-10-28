@@ -68,6 +68,15 @@ function createFixture({
     status: 'SUBMITTED'
   };
   const repository = {
+    async findAssignment(assignmentId) {
+      assert.equal(assignmentId, 4);
+      return assignment;
+    },
+    async findByAssignmentAndStudent(assignmentId, studentId) {
+      assert.equal(assignmentId, 4);
+      assert.equal(studentId, 5);
+      return existing || savedSubmission;
+    },
     async findAssignmentForUpdate(assignmentId, connection) {
       assert.equal(assignmentId, 4);
       assert.ok(connection);
@@ -555,4 +564,33 @@ test('US-08 applies a 10 requests per minute limit to authenticated uploads', as
   assert.equal(responses.filter((status) => status === 201).length, 10);
   assert.equal(responses[10], 429);
   assert.equal(handledUploads, 10);
+});
+
+test('US-08 HTTP endpoint returns student submission detail', async (t) => {
+  const fixture = createFixture();
+  const submissionController = new SubmissionController(fixture.service);
+  const app = express();
+  app.use(
+    '/api',
+    createSubmissionRouter({
+      submissionController,
+      uploadLimiter: (req, res, next) => next()
+    })
+  );
+  app.use(errorHandler);
+  const originalQuery = db.query;
+  db.query = async () => [[{ status: 'ACTIVE', token_version: 0 }], []];
+  t.after(() => {
+    db.query = originalQuery;
+  });
+  const token = jwt.sign({ id: 5, role: 'SINH_VIEN', token_version: 0 }, config.JWT_SECRET, {
+    expiresIn: '5m'
+  });
+
+  const response = await request(app)
+    .get('/api/assignments/4/submissions/me')
+    .set('Authorization', `Bearer ${token}`);
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.success, true);
 });
