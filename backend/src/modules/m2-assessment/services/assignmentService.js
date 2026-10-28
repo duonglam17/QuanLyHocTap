@@ -280,9 +280,11 @@ class AssignmentService {
   }
 
   async updateAssignment(assignmentId, instructorId, changes) {
-    const assignment = await this.getAssignmentById(assignmentId);
+    const assignment = await this.getAssignmentById(assignmentId, {
+      id: instructorId,
+      role: 'GIANG_VIEN'
+    });
     const courseAccessPort = this.getPort('courseAccess', { optional: true });
-    await this._assertCourseOwner(assignment.courseId, instructorId, courseAccessPort);
     await this._assertCourseWritable(assignment.courseId, courseAccessPort);
 
     const update = {};

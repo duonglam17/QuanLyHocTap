@@ -17,6 +17,7 @@ const StudentGradebookService = require('../../src/modules/m2-assessment/service
 const {
   createStudentGradebookRouter
 } = require('../../src/modules/m2-assessment/routes/studentGradebookRoutes');
+const StudentGradebookController = require('../../src/modules/m2-assessment/controllers/studentGradebookController');
 
 function createFixture({
   enrolled = true,
@@ -267,4 +268,29 @@ test('US-13 rejects non-student roles on the personal gradebook endpoint', async
     .set('Authorization', `Bearer ${token}`);
 
   assert.equal(response.status, 403);
+});
+
+test('US-13 HTTP endpoint uses real controller to return personal gradebook', async (t) => {
+  const { service } = createFixture();
+  const controller = new StudentGradebookController(service);
+  const app = express();
+  app.use('/api', createStudentGradebookRouter({ controller }));
+  app.use(errorHandler);
+  const originalQuery = db.query;
+  db.query = async () => [[{ status: 'ACTIVE', token_version: 0 }], []];
+  t.after(() => {
+    db.query = originalQuery;
+  });
+  const token = jwt.sign({ id: 15, role: 'SINH_VIEN', token_version: 0 }, config.JWT_SECRET, {
+    expiresIn: '5m'
+  });
+
+  const response = await request(app)
+    .get('/api/courses/3/my-grades')
+    .set('Authorization', `Bearer ${token}`);
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.success, true);
+  assert.equal(response.body.data.course_id, 3);
+  assert.equal(response.body.data.assignments.length, 3);
 });

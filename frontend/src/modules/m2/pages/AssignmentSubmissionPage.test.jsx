@@ -70,6 +70,22 @@ describe('AssignmentSubmissionPage (US-08)', () => {
     expect(await screen.findByText('Không tìm thấy bài tập')).toBeInTheDocument();
   });
 
+  it('explains that a closed assignment does not accept late submissions', async () => {
+    submissionApi.getAssignment.mockResolvedValue({
+      ...assignment,
+      allow_late_submission: false,
+      status: 'CLOSED'
+    });
+    submissionApi.getMySubmission.mockResolvedValue(null);
+
+    renderPage();
+
+    expect(await screen.findByText(/Bài tập không cho phép nộp trễ/)).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Bài tập hiện không nhận bài nộp.');
+    expect(screen.queryByRole('button', { name: 'Nộp bài' })).not.toBeInTheDocument();
+    expect(submissionApi.submitAssignment).not.toHaveBeenCalled();
+  });
+
   it('uploads a selected file, locks the submit button, and displays server receipt data', async () => {
     const user = userEvent.setup();
     let finishUpload;
