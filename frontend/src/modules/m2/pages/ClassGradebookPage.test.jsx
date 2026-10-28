@@ -75,6 +75,21 @@ describe('ClassGradebookPage (US-14)', () => {
     expect(await screen.findByText('Nguyễn An')).toBeInTheDocument();
   });
 
+  it.each([
+    [401, 'Phiên đăng nhập đã hết hạn.'],
+    [403, 'Bạn không phải chủ khóa học.'],
+    [409, 'Bảng điểm đang được cập nhật.'],
+    [422, 'Mã khóa học không hợp lệ.'],
+    [429, 'Bạn đã gửi quá nhiều yêu cầu.']
+  ])('shows the exact class gradebook API message for status %i', async (status, message) => {
+    gradebookApi.getClassGradebook.mockRejectedValue(Object.assign(new Error(message), { status }));
+
+    renderPage();
+
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Thử lại' })).toBeInTheDocument();
+  });
+
   it('shows an empty state when there are no enrolled students', async () => {
     gradebookApi.getClassGradebook.mockResolvedValue(pageResponse({ data: [] }));
 

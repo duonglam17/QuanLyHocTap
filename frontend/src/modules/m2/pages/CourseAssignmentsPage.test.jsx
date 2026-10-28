@@ -46,6 +46,18 @@ describe('CourseAssignmentsPage', () => {
     expect(screen.getByRole('button', { name: 'Thử lại' })).toBeInTheDocument();
   });
 
+  it.each([
+    [401, 'Phiên đăng nhập đã hết hạn.'],
+    [403, 'Bạn không có quyền xem khóa học này.']
+  ])('shows the exact course API message for status %i', async (status, message) => {
+    vi.spyOn(api, 'get').mockRejectedValue(Object.assign(new Error(message), { status }));
+
+    renderPage();
+
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Thử lại' })).toBeInTheDocument();
+  });
+
   it('shows an empty state when the course is unavailable', async () => {
     vi.spyOn(api, 'get').mockResolvedValue({ course: null });
 
