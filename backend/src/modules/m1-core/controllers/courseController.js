@@ -24,7 +24,13 @@ class CourseController {
   async create(req, res, next) {
     try {
       const course = await this.courseService.createCourse(req.user.id, req.body);
-      return res.status(201).json({ course });
+      const enrollmentKey = course.enrollment_key || course.enrollmentKey;
+      return res.status(201).json({
+        course,
+        data: { ...course, enrollmentKey },
+        ...course,
+        enrollmentKey
+      });
     } catch (error) {
       return next(error);
     }
@@ -37,7 +43,7 @@ class CourseController {
         req.user.id,
         req.body
       );
-      return res.status(200).json({ course });
+      return res.status(200).json({ course, data: course, ...course });
     } catch (error) {
       return next(error);
     }
@@ -46,7 +52,7 @@ class CourseController {
   async publish(req, res, next) {
     try {
       const course = await this.courseService.publishCourse(req.params.courseId, req.user.id);
-      return res.status(200).json({ course });
+      return res.status(200).json({ course, data: course, ...course });
     } catch (error) {
       return next(error);
     }

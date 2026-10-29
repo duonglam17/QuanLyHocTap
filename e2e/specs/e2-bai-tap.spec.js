@@ -19,7 +19,7 @@ test.describe('E2E-2: Quy trình quản lý bài tập, nộp bài, chấm bài 
     const courseResponse = await createCourse(gvSession, {
       title: 'Khóa học E2E Quản lý Bài tập'
     });
-    const course = courseResponse.data || courseResponse;
+    const course = courseResponse.course || courseResponse.data || courseResponse;
     const courseId = course.id;
     await publishCourse(gvSession, courseId);
     await enrollStudent(svSession, course.enrollmentKey || course.enrollment_key);
