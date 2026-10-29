@@ -1,7 +1,7 @@
 export async function createCourse(session, values = {}) {
   const unique = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
   const randomKey = Math.random().toString(36).substring(2, 8).toUpperCase();
-  return session.api('/courses', {
+  const response = await session.api('/courses', {
     method: 'POST',
     body: {
       code: `E2E${unique}`.slice(0, 20),
@@ -12,6 +12,7 @@ export async function createCourse(session, values = {}) {
       ...values
     }
   });
+  return response?.course || response?.data || response;
 }
 
 export async function publishCourse(session, courseId) {
