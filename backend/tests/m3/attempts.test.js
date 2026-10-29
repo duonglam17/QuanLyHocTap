@@ -66,7 +66,8 @@ function collectObjectKeys(value) {
 function createService({
   initialAttempt = null,
   clockNow = now,
-  courseStatus = 'PUBLISHED'
+  courseStatus = 'PUBLISHED',
+  runTransaction = async (work) => work({})
 } = {}) {
   let attempt = initialAttempt && { ...initialAttempt };
   let nextAttemptId = 71;
@@ -212,7 +213,7 @@ function createService({
   const service = createAttemptService({
     repository,
     getCourseAccess: () => courseAccess,
-    withTransaction: async (work) => work({}),
+    withTransaction: runTransaction,
     clock: { now: () => new Date(nowValue) },
     logger,
     createSessionToken: () => `generated-session-${++tokenNumber}`
@@ -248,6 +249,45 @@ test('same client instance resumes the same attempt and restores saved answers',
   assert.deepEqual(result.savedAnswers, [{ questionId: 9, optionId: 92 }]);
   assert.equal(result.remaining_seconds, 1800);
   assert.equal(JSON.stringify(result).includes('is_correct'), false);
+});
+
+test('attempt start uses server time at the opening boundary and rejects outside the quiz window', async (t) => {
+  await t.test('before the opening time', async () => {
+    const { service, getAttempt, setNow } = createService();
+    setNow(new Date('2026-11-24T23:59:59.999Z'));
+
+    await assert.rejects(
+      service.startAttempt(5, 12, { clientInstanceId: 'tab-one', takeOver: false }),
+      (error) => error.code === 'QUIZ_NOT_OPEN' && error.statusCode === 409
+    );
+    assert.equal(getAttempt(), null);
+  });
+
+  await t.test('at the inclusive opening time', async () => {
+    const { service, getAttempt, setNow } = createService();
+    const serverTime = new Date('2026-11-25T00:00:00.000Z');
+    setNow(serverTime);
+
+    const result = await service.startAttempt(5, 12, {
+      clientInstanceId: 'tab-one',
+      takeOver: false
+    });
+
+    assert.equal(result.startedAt.getTime(), serverTime.getTime());
+    assert.equal(result.expiresAt.getTime(), serverTime.getTime() + 30 * 60_000);
+    assert.equal(getAttempt().startedAt.getTime(), serverTime.getTime());
+  });
+
+  await t.test('at the exclusive closing time', async () => {
+    const { service, getAttempt, setNow } = createService();
+    setNow(new Date('2026-11-25T02:00:00.000Z'));
+
+    await assert.rejects(
+      service.startAttempt(5, 12, { clientInstanceId: 'tab-one', takeOver: false }),
+      (error) => error.code === 'QUIZ_NOT_OPEN' && error.statusCode === 409
+    );
+    assert.equal(getAttempt(), null);
+  });
 });
 
 test('a different client instance is rejected without question or answer data', async () => {
@@ -365,6 +405,43 @@ test('saving an answer validates the session and returns server remaining time',
   assert.deepEqual(saved, [{ attemptId: 71, questionId: 9, optionId: 92 }]);
 });
 
+test('saving an answer rejects another student and options outside the question', async (t) => {
+  await t.test('attempt belongs to another student', async () => {
+    const { service, saved } = createService({
+      initialAttempt: createAttempt()
+    });
+
+    await assert.rejects(
+      service.saveAnswer(71, 13, {
+        clientInstanceId: 'tab-one',
+        sessionToken: 'session-one',
+        questionId: 9,
+        optionId: 92
+      }),
+      (error) => error.code === 'FORBIDDEN' && error.statusCode === 403
+    );
+    assert.deepEqual(saved, []);
+  });
+
+  await t.test('option does not belong to the question', async () => {
+    const { service, repository, saved } = createService({
+      initialAttempt: createAttempt()
+    });
+    repository.optionBelongsToQuestion = async () => false;
+
+    await assert.rejects(
+      service.saveAnswer(71, 12, {
+        clientInstanceId: 'tab-one',
+        sessionToken: 'session-one',
+        questionId: 9,
+        optionId: 91
+      }),
+      (error) => error.code === 'VALIDATION_ERROR' && error.statusCode === 422
+    );
+    assert.deepEqual(saved, []);
+  });
+});
+
 test('repository takeover uses a conditional atomic update and affected row count', async () => {
   let query;
   const repository = createAttemptRepository({});
@@ -458,6 +535,45 @@ test('manual submit grades once and repeated submit returns the stored result', 
   assert.equal(getAttempt().totalQuestions, 4);
   assert.equal(getAttempt().correctAnswersCount, 3);
   assert.equal(getGradingCount(), 1);
+});
+
+test('attempt grading and completion use the same transaction connection', async () => {
+  const transaction = {};
+  let transactionCount = 0;
+  const calls = [];
+  const { service, repository } = createService({
+    initialAttempt: createAttempt(),
+    runTransaction: async (work) => {
+      transactionCount++;
+      return work(transaction);
+    }
+  });
+  for (const method of [
+    'findAttemptForUpdate',
+    'gradeAttempt',
+    'completeAttempt',
+    'markQuizHasAttempts'
+  ]) {
+    const original = repository[method];
+    repository[method] = async (connection, ...args) => {
+      assert.equal(connection, transaction);
+      calls.push(method);
+      return original(connection, ...args);
+    };
+  }
+
+  await service.submitAttempt(71, 12, {
+    clientInstanceId: 'tab-one',
+    sessionToken: 'session-one'
+  });
+
+  assert.equal(transactionCount, 1);
+  assert.deepEqual(calls, [
+    'findAttemptForUpdate',
+    'gradeAttempt',
+    'completeAttempt',
+    'markQuizHasAttempts'
+  ]);
 });
 
 test('manual submit after expiry is auto-submitted and score visibility follows quiz settings', async () => {
@@ -963,6 +1079,25 @@ test('attempt result route requires authentication and allows students and instr
   } finally {
     db.query = originalQuery;
   }
+});
+
+test('attempt API returns a 400 response for malformed JSON', async () => {
+  const app = express();
+  app.use(express.json());
+  app.use('/api', createAttemptRoutes({
+    async startAttempt() {
+      assert.fail('invalid JSON must be rejected before the route handler');
+    }
+  }));
+  app.use(errorHandler);
+
+  const response = await request(app)
+    .post('/api/quizzes/5/start')
+    .set('Content-Type', 'application/json')
+    .send('{"clientInstanceId":');
+
+  assert.equal(response.status, 400);
+  assert.equal(response.body.code, 'INVALID_JSON_BODY');
 });
 
 test('attempt routes apply defaults and return only the 409 error envelope on session conflicts', async () => {
