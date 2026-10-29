@@ -238,4 +238,90 @@ describe('ScheduleTab (US-17, EC-23)', () => {
       expect(scheduleApi.cancelSchedule).toHaveBeenCalledWith(101);
     });
   });
+
+  it('disables submit button and input fields while submitting ScheduleFormDialog (trạng thái đang gửi)', async () => {
+    scheduleApi.listCourseSchedules.mockResolvedValue({ schedules: mockSchedules });
+    let resolveCreate;
+    scheduleApi.createSchedule.mockReturnValue(
+      new Promise((resolve) => {
+        resolveCreate = resolve;
+      })
+    );
+
+    renderScheduleTab({ isOwner: true });
+    await screen.findByText('Buổi 1: Giới thiệu môn học');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lên lịch buổi học' }));
+
+    const titleInput = screen.getByLabelText(/Tiêu đề buổi học/);
+    const dateInput = screen.getByLabelText(/Ngày học/);
+    const startInput = screen.getByLabelText(/Giờ bắt đầu/);
+    const endInput = screen.getByLabelText(/Giờ kết thúc/);
+    const roomInput = screen.getByLabelText(/Phòng học/);
+
+    fireEvent.change(titleInput, { target: { value: 'Buổi 5' } });
+    fireEvent.change(dateInput, { target: { value: '2026-03-20' } });
+    fireEvent.change(startInput, { target: { value: '08:00' } });
+    fireEvent.change(endInput, { target: { value: '10:00' } });
+    fireEvent.change(roomInput, { target: { value: 'P.301' } });
+
+    const submitBtn = screen.getByRole('button', { name: 'Lên lịch' });
+    fireEvent.click(submitBtn);
+
+    expect(screen.getByRole('button', { name: /Đang lưu/ })).toBeDisabled();
+    expect(titleInput).toBeDisabled();
+    expect(roomInput).toBeDisabled();
+
+    resolveCreate({
+      schedule: { id: 105, title: 'Buổi 5', date: '2026-03-20', startTime: '08:00', endTime: '10:00', roomOrLink: 'P.301' }
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: 'Lên lịch buổi học mới' })).not.toBeInTheDocument();
+    });
+  });
+
+  it('handles HTTP errors (401, 403, 409, 422) when creating a schedule', async () => {
+    scheduleApi.listCourseSchedules.mockResolvedValue({ schedules: mockSchedules });
+    renderScheduleTab({ isOwner: true });
+    await screen.findByText('Buổi 1: Giới thiệu môn học');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lên lịch buổi học' }));
+
+    fireEvent.change(screen.getByLabelText(/Tiêu đề buổi học/), { target: { value: 'Buổi thử lỗi' } });
+    fireEvent.change(screen.getByLabelText(/Ngày học/), { target: { value: '2026-03-25' } });
+    fireEvent.change(screen.getByLabelText(/Giờ bắt đầu/), { target: { value: '14:00' } });
+    fireEvent.change(screen.getByLabelText(/Giờ kết thúc/), { target: { value: '16:00' } });
+    fireEvent.change(screen.getByLabelText(/Phòng học/), { target: { value: 'P.101' } });
+
+    const submitBtn = screen.getByRole('button', { name: 'Lên lịch' });
+
+    // 401 Unauthorized
+    scheduleApi.createSchedule.mockRejectedValueOnce(
+      new ApiError({ status: 401, message: 'Phiên làm việc đã hết hạn' })
+    );
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText('Phiên làm việc đã hết hạn')).toBeInTheDocument();
+
+    // 403 Forbidden
+    scheduleApi.createSchedule.mockRejectedValueOnce(
+      new ApiError({ status: 403, message: 'Bạn không có quyền lên lịch cho khóa học này' })
+    );
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText('Bạn không có quyền lên lịch cho khóa học này')).toBeInTheDocument();
+
+    // 409 Course Archived
+    scheduleApi.createSchedule.mockRejectedValueOnce(
+      new ApiError({ status: 409, code: 'COURSE_ARCHIVED', message: 'Khóa học đã lưu trữ' })
+    );
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText('Khóa học đã lưu trữ, không thể chỉnh sửa lịch học.')).toBeInTheDocument();
+
+    // 422 Invalid schedule data
+    scheduleApi.createSchedule.mockRejectedValueOnce(
+      new ApiError({ status: 422, message: 'Giờ kết thúc phải sau giờ bắt đầu' })
+    );
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText('Giờ kết thúc phải sau giờ bắt đầu')).toBeInTheDocument();
+  });
 });

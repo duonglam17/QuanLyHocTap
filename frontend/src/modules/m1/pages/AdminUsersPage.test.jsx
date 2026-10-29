@@ -329,4 +329,116 @@ describe('AdminUsersPage (US-02 Quản lý người dùng)', () => {
       expect(usersApi.deleteUser).toHaveBeenCalledWith(3);
     });
   });
+
+  it('disables submit button and input fields while submitting UserFormDialog (trạng thái đang gửi)', async () => {
+    usersApi.listUsers.mockResolvedValue({ items: mockUsersList, total: 3 });
+    let resolveCreate;
+    usersApi.createUser.mockReturnValue(
+      new Promise((resolve) => {
+        resolveCreate = resolve;
+      })
+    );
+
+    renderAdminUsersPage();
+    await screen.findByText('Nguyễn Thị Mai');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tạo người dùng mới' }));
+
+    const fullNameInput = screen.getByLabelText(/Họ và tên/);
+    const usernameInput = screen.getByLabelText(/Tên đăng nhập/);
+    const emailInput = screen.getByLabelText(/Email/);
+
+    fireEvent.change(fullNameInput, { target: { value: 'Lê Hoàng Nam' } });
+    fireEvent.change(usernameInput, { target: { value: 'namlh' } });
+    fireEvent.change(emailInput, { target: { value: 'nam.lh@lms.local' } });
+
+    const submitBtn = screen.getByRole('button', { name: 'Tạo tài khoản' });
+    fireEvent.click(submitBtn);
+
+    expect(screen.getByRole('button', { name: /Đang xử lý/ })).toBeDisabled();
+    expect(fullNameInput).toBeDisabled();
+    expect(usernameInput).toBeDisabled();
+    expect(emailInput).toBeDisabled();
+
+    resolveCreate({
+      user: { id: 5, fullName: 'Lê Hoàng Nam', username: 'namlh', email: 'nam.lh@lms.local', role: 'SINH_VIEN' },
+      initialPassword: 'TempPass123!'
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Tạo tài khoản thành công' })).toBeInTheDocument();
+    });
+  });
+
+  it('disables submit button while submitting ChangeRoleDialog (trạng thái đang gửi)', async () => {
+    usersApi.listUsers.mockResolvedValue({ items: mockUsersList, total: 3 });
+    let resolveChangeRole;
+    usersApi.updateUserRole.mockReturnValue(
+      new Promise((resolve) => {
+        resolveChangeRole = resolve;
+      })
+    );
+
+    renderAdminUsersPage();
+    await screen.findByText('Nguyễn Văn An');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Đổi vai trò cho sinhvien_an' }));
+
+    const roleSelect = screen.getByLabelText(/Chọn vai trò mới/);
+    fireEvent.change(roleSelect, { target: { value: 'GIANG_VIEN' } });
+
+    const saveButton = screen.getByRole('button', { name: 'Lưu thay đổi' });
+    fireEvent.click(saveButton);
+
+    expect(screen.getByRole('button', { name: /Đang lưu/ })).toBeDisabled();
+    expect(roleSelect).toBeDisabled();
+
+    resolveChangeRole({ user: { id: 3, role: 'GIANG_VIEN' } });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: 'Thay đổi vai trò người dùng' })).not.toBeInTheDocument();
+    });
+  });
+
+  it('handles HTTP errors (401, 403, 422, 429) when creating a user', async () => {
+    usersApi.listUsers.mockResolvedValue({ items: mockUsersList, total: 3 });
+    renderAdminUsersPage();
+    await screen.findByText('Nguyễn Thị Mai');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tạo người dùng mới' }));
+
+    fireEvent.change(screen.getByLabelText(/Họ và tên/), { target: { value: 'Test Error' } });
+    fireEvent.change(screen.getByLabelText(/Tên đăng nhập/), { target: { value: 'testerror' } });
+    fireEvent.change(screen.getByLabelText(/Email/), { target: { value: 'test@lms.local' } });
+
+    const submitBtn = screen.getByRole('button', { name: 'Tạo tài khoản' });
+
+    // 401 Unauthorized
+    usersApi.createUser.mockRejectedValueOnce(
+      new ApiError({ status: 401, message: 'Phiên làm việc hết hạn' })
+    );
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText('Phiên làm việc hết hạn')).toBeInTheDocument();
+
+    // 403 Forbidden
+    usersApi.createUser.mockRejectedValueOnce(
+      new ApiError({ status: 403, message: 'Chỉ Quản trị viên mới có quyền tạo người dùng' })
+    );
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText('Chỉ Quản trị viên mới có quyền tạo người dùng')).toBeInTheDocument();
+
+    // 422 Validation Error
+    usersApi.createUser.mockRejectedValueOnce(
+      new ApiError({ status: 422, message: 'Tên đăng nhập không hợp lệ hoặc chứa ký tự đặc biệt' })
+    );
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText('Tên đăng nhập không hợp lệ hoặc chứa ký tự đặc biệt')).toBeInTheDocument();
+
+    // 429 Rate Limit
+    usersApi.createUser.mockRejectedValueOnce(
+      new ApiError({ status: 429, message: 'Bạn đã thực hiện quá nhiều thao tác, vui lòng thử lại sau.' })
+    );
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText('Bạn đã thực hiện quá nhiều thao tác, vui lòng thử lại sau.')).toBeInTheDocument();
+  });
 });

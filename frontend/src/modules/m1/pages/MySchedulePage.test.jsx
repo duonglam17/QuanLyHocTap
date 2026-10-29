@@ -131,4 +131,44 @@ describe('MySchedulePage (US-18)', () => {
       expect(scheduleApi.listStudentSchedule).toHaveBeenCalledWith({ page: 2, limit: 10 });
     });
   });
+
+  it('handles HTTP errors (401, 403) and displays error state with retry', async () => {
+    scheduleApi.listStudentSchedule.mockRejectedValueOnce(
+      new Error('Phiên làm việc hết hạn hoặc bạn không có quyền xem thời khóa biểu')
+    );
+    renderMySchedulePage();
+
+    expect(
+      await screen.findByText('Phiên làm việc hết hạn hoặc bạn không có quyền xem thời khóa biểu')
+    ).toBeInTheDocument();
+
+    scheduleApi.listStudentSchedule.mockResolvedValueOnce({ items: [], total: 0 });
+    fireEvent.click(screen.getByRole('button', { name: 'Thử lại' }));
+
+    await waitFor(() => {
+      expect(scheduleApi.listStudentSchedule).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('renders schedule item with null roomOrLink gracefully', async () => {
+    const itemWithNullRoom = [
+      {
+        id: 205,
+        courseId: 1,
+        courseCode: 'INT3306',
+        courseTitle: 'Phát triển ứng dụng Web',
+        title: 'Buổi hướng dẫn tự học',
+        date: '2026-03-10',
+        startTime: '09:00:00',
+        endTime: '11:00:00',
+        roomOrLink: null,
+        status: 'SCHEDULED'
+      }
+    ];
+    scheduleApi.listStudentSchedule.mockResolvedValue({ items: itemWithNullRoom, total: 1, page: 1, limit: 10 });
+    renderMySchedulePage();
+
+    expect(await screen.findByText('Buổi hướng dẫn tự học')).toBeInTheDocument();
+    expect(screen.getByText('INT3306')).toBeInTheDocument();
+  });
 });
