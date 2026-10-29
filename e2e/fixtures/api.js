@@ -1,5 +1,6 @@
 export async function createCourse(session, values = {}) {
   const unique = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  const randomKey = Math.random().toString(36).substring(2, 8).toUpperCase();
   return session.api('/courses', {
     method: 'POST',
     body: {
@@ -7,7 +8,7 @@ export async function createCourse(session, values = {}) {
       title: `Khóa học E2E ${unique}`,
       description: 'Dữ liệu được tạo tự động cho kiểm thử E2E.',
       semester: 'E2E-2026',
-      enrollmentKey: `E${unique}`.slice(0, 8),
+      enrollmentKey: `E${randomKey}`,
       ...values
     }
   });
