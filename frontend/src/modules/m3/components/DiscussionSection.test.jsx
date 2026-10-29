@@ -1,6 +1,7 @@
 import userEvent from '@testing-library/user-event';
 import { screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../../../shared/api/ApiError.js';
 import { api } from '../../../shared/api/client.js';
 import { getLessonSections } from '../../../shared/lib/slots.js';
 import { renderWithProviders } from '../../../shared/test-utils/renderWithProviders.jsx';
@@ -114,6 +115,44 @@ describe('DiscussionSection', () => {
       '/lessons/4/comments',
       { content: 'Em có một câu hỏi.' }
     ));
+  });
+
+  it.each([401, 403, 409, 422, 429])(
+    'shows the API error and preserves the comment when posting returns %i',
+    async (status) => {
+      vi.spyOn(api, 'get').mockResolvedValue(createPage());
+      vi.spyOn(api, 'post').mockRejectedValue(new ApiError({
+        status,
+        message: `API error ${status}`
+      }));
+      const user = userEvent.setup();
+      renderSection();
+
+      const composer = await screen.findByLabelText(/Bình luận mới/);
+      await user.type(composer, 'Câu hỏi cần gửi');
+      await user.click(screen.getByRole('button', { name: 'Gửi bình luận' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(`API error ${status}`);
+      expect(composer).toHaveValue('Câu hỏi cần gửi');
+    }
+  );
+
+  it('disables comment submission while the API request is pending', async () => {
+    let resolvePost;
+    vi.spyOn(api, 'get').mockResolvedValue(createPage());
+    const post = vi.spyOn(api, 'post').mockReturnValue(new Promise((resolve) => {
+      resolvePost = resolve;
+    }));
+    const user = userEvent.setup();
+    renderSection();
+
+    await user.type(await screen.findByLabelText(/Bình luận mới/), 'Câu hỏi cần gửi');
+    await user.click(screen.getByRole('button', { name: 'Gửi bình luận' }));
+
+    expect(screen.getByRole('button', { name: 'Đang gửi...' })).toBeDisabled();
+    expect(post).toHaveBeenCalledTimes(1);
+    resolvePost({ id: 23, content: 'Câu hỏi cần gửi' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Gửi bình luận' })).toBeEnabled());
   });
 
   it('replies to a root discussion using its comment id', async () => {

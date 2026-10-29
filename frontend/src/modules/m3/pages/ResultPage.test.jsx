@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route, Routes } from 'react-router-dom';
 import { ApiError } from '../../../shared/api/ApiError.js';
@@ -139,6 +140,24 @@ describe('ResultPage', () => {
 
     expect(await screen.findByText('Trang không có quyền')).toBeInTheDocument();
   });
+
+  it.each([401, 409, 422, 429])(
+    'shows and retries the result API error with status %i',
+    async (status) => {
+      vi.spyOn(api, 'get')
+        .mockRejectedValueOnce(new ApiError({
+          status,
+          message: `API error ${status}`
+        }))
+        .mockResolvedValueOnce(createResult());
+      const user = userEvent.setup();
+      renderResult();
+
+      expect(await screen.findByText(`API error ${status}`)).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Thử lại' }));
+      expect(await screen.findByRole('heading', { name: 'Kết quả bài thi' })).toBeInTheDocument();
+    }
+  );
 
   it('shows the application not-found page for a 404 response', async () => {
     vi.spyOn(api, 'get').mockRejectedValue(new ApiError({ status: 404 }));

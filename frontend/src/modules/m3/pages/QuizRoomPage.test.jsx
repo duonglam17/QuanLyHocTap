@@ -2,6 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route, Routes } from 'react-router-dom';
+import { ApiError } from '../../../shared/api/ApiError.js';
 import { api } from '../../../shared/api/client.js';
 import { renderWithProviders } from '../../../shared/test-utils/renderWithProviders.jsx';
 import { routes } from '../routes/index.jsx';
@@ -102,6 +103,63 @@ describe('QuizRoomPage', () => {
     });
   });
 
+  it.each([401, 403, 409, 422, 429])(
+    'shows the start API error and retries for status %i',
+    async (status) => {
+      vi.mocked(api.post)
+        .mockRejectedValueOnce(new ApiError({
+          status,
+          message: `API error ${status}`
+        }))
+        .mockResolvedValueOnce(createSession());
+      const user = userEvent.setup();
+      renderRoom();
+
+      expect(await screen.findByText(`API error ${status}`)).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Thử lại' }));
+      expect(await screen.findByRole('group', { name: /Hai cộng hai bằng mấy/ })).toBeInTheDocument();
+      expect(api.post).toHaveBeenNthCalledWith(2, '/quizzes/55/start', {
+        clientInstanceId: instanceId,
+        takeOver: false
+      });
+    }
+  );
+
+  it.each([401, 403, 409, 422, 429])(
+    'shows submission API errors and permits an explicit retry for status %i',
+    async (status) => {
+      let submitCalls = 0;
+      vi.mocked(api.post).mockImplementation((path) => {
+        if (path.endsWith('/start')) return Promise.resolve(createSession());
+        submitCalls++;
+        if (submitCalls === 1) {
+          return Promise.reject(new ApiError({
+            status,
+            message: `API error ${status}`
+          }));
+        }
+        return Promise.resolve({
+          attemptId: 101,
+          status: 'SUBMITTED',
+          submittedAt: '2030-12-01T01:30:00.000Z',
+          score: 8,
+          visibleToStudent: true
+        });
+      });
+      const user = userEvent.setup();
+      renderRoom();
+
+      await screen.findByRole('group', { name: /Hai cộng hai bằng mấy/ });
+      await user.click(screen.getByRole('button', { name: 'Nộp bài' }));
+      await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Nộp bài' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(`API error ${status}`);
+      await user.click(screen.getByRole('button', { name: 'Thử nộp lại' }));
+      expect(await screen.findByText('Điểm: 8')).toBeInTheDocument();
+      expect(submitCalls).toBe(2);
+    }
+  );
+
   it('starts with a tab-scoped id, keeps it in sessionStorage, and never renders answer keys', async () => {
     const post = vi.mocked(api.post);
     const firstView = renderRoom();
@@ -169,6 +227,28 @@ describe('QuizRoomPage', () => {
       sessionToken: 'session-token-1'
     });
   });
+
+  it.each([401, 403, 409, 422, 429])(
+    'shows the save-answer API error and retries for status %i',
+    async (status) => {
+      const patch = vi.spyOn(api, 'patch')
+        .mockRejectedValueOnce(new ApiError({
+          status,
+          message: `API error ${status}`
+        }))
+        .mockResolvedValueOnce({ saved: true, remaining_seconds: 3500 });
+      const user = userEvent.setup();
+      renderRoom();
+
+      await user.click(await screen.findByLabelText('Bốn'));
+      expect(await screen.findByRole('alert')).toHaveTextContent(`API error ${status}`);
+      const retryButton = await screen.findByRole('button', { name: 'Thử lưu lại' });
+      await user.click(retryButton);
+
+      await waitFor(() => expect(patch).toHaveBeenCalledTimes(2));
+      expect(await screen.findByText('Đã lưu')).toBeInTheDocument();
+    }
+  );
 
   it('keeps a queued answer offline and saves it when the browser reconnects', async () => {
     const patch = vi.spyOn(api, 'patch').mockResolvedValue({

@@ -2,7 +2,9 @@ import { act, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useLocation } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
+import { ApiError } from '../../../shared/api/ApiError.js';
 import { renderWithProviders } from '../../../shared/test-utils/index.js';
+import { toast } from '../../../shared/components/molecules/Toast.jsx';
 import { NotificationBell } from './NotificationBell.jsx';
 import { listNotifications, markNotificationRead } from '../api/notifications.js';
 
@@ -64,6 +66,26 @@ describe('NotificationBell', () => {
     expect(await screen.findByText('Chưa có thông báo.')).toBeInTheDocument();
   });
 
+  it.each([401, 403, 409, 422, 429])(
+    'shows and retries a notification API error with status %i',
+    async (status) => {
+      listNotifications
+        .mockRejectedValueOnce(new ApiError({
+          status,
+          message: `API error ${status}`
+        }))
+        .mockResolvedValueOnce({ items: [], page: 1, limit: 100, total: 0 });
+
+      const user = userEvent.setup();
+      renderWithProviders(<NotificationBell />);
+      await user.click(screen.getByRole('button', { name: /Thông báo/ }));
+
+      expect(await screen.findByText(`API error ${status}`)).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Thử lại' }));
+      expect(await screen.findByText('Chưa có thông báo.')).toBeInTheDocument();
+    }
+  );
+
   it('counts unread notifications, marks one as read, and navigates to its safe link', async () => {
     listNotifications.mockResolvedValue({ items: [notification], page: 1, limit: 100, total: 1 });
     markNotificationRead.mockResolvedValue({ id: 7, isRead: true });
@@ -81,6 +103,44 @@ describe('NotificationBell', () => {
 
     await waitFor(() => expect(markNotificationRead).toHaveBeenCalledWith(7));
     await waitFor(() => expect(screen.getByTestId('current-path')).toHaveTextContent('/courses/12'));
+  });
+
+  it('reports a failed mark-read request and still follows its safe link', async () => {
+    listNotifications.mockResolvedValue({ items: [notification], page: 1, limit: 100, total: 1 });
+    markNotificationRead.mockRejectedValue(new ApiError({
+      status: 429,
+      message: 'Thử lại sau.'
+    }));
+    const toastError = vi.spyOn(toast, 'error');
+    const user = userEvent.setup();
+    renderWithProviders(
+      <>
+        <NotificationBell />
+        <CurrentPath />
+      </>
+    );
+    await user.click(await screen.findByRole('button', { name: /1 chưa đọc/ }));
+    await user.click(await screen.findByText('Bài tập mới'));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Thử lại sau.'));
+    expect(screen.getByTestId('current-path')).toHaveTextContent('/courses/12');
+  });
+
+  it('disables the notification item while its read request is pending', async () => {
+    let resolveMarkRead;
+    listNotifications.mockResolvedValue({ items: [notification], page: 1, limit: 100, total: 1 });
+    markNotificationRead.mockReturnValue(new Promise((resolve) => {
+      resolveMarkRead = resolve;
+    }));
+    const user = userEvent.setup();
+    renderWithProviders(<NotificationBell />);
+    await user.click(await screen.findByRole('button', { name: /1 chưa đọc/ }));
+    await user.click(await screen.findByText('Bài tập mới'));
+    await user.click(screen.getByRole('button', { name: /Thông báo/ }));
+
+    expect(screen.getByRole('menuitem', { name: /Bài tập mới/ })).toHaveAttribute('data-disabled');
+    resolveMarkRead({ id: 7, isRead: true });
+    await waitFor(() => expect(markNotificationRead).toHaveBeenCalledTimes(1));
   });
 
   it('refreshes periodically only while the page is visible', async () => {

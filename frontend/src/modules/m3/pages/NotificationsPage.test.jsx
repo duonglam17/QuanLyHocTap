@@ -2,7 +2,9 @@ import { screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useLocation } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
+import { ApiError } from '../../../shared/api/ApiError.js';
 import { renderWithProviders } from '../../../shared/test-utils/index.js';
+import { toast } from '../../../shared/components/molecules/Toast.jsx';
 import { listNotifications, markNotificationRead } from '../api/notifications.js';
 import { NotificationsPage } from './NotificationsPage.jsx';
 
@@ -62,6 +64,25 @@ describe('NotificationsPage', () => {
     expect(await screen.findByText('Chưa có thông báo')).toBeInTheDocument();
   });
 
+  it.each([401, 403, 409, 422, 429])(
+    'shows the API error and retries the notification list for status %i',
+    async (status) => {
+      listNotifications
+        .mockRejectedValueOnce(new ApiError({
+          status,
+          message: `API error ${status}`
+        }))
+        .mockResolvedValueOnce({ items: [], page: 1, limit: 20, total: 0 });
+
+      const user = userEvent.setup();
+      renderWithProviders(<NotificationsPage />);
+
+      expect(await screen.findByText(`API error ${status}`)).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Thử lại' }));
+      expect(await screen.findByText('Chưa có thông báo')).toBeInTheDocument();
+    }
+  );
+
   it('shows the empty state', async () => {
     listNotifications.mockResolvedValue({ items: [], page: 1, limit: 20, total: 0 });
 
@@ -96,5 +117,50 @@ describe('NotificationsPage', () => {
     await user.click(screen.getByRole('button', { name: 'Sau' }));
     expect(await screen.findByText('Trang hai')).toBeInTheDocument();
     expect(listNotifications).toHaveBeenCalledWith({ page: 2, limit: 20 });
+  });
+
+  it.each([401, 403, 409, 422, 429])(
+    'reports notification read API errors with status %i',
+    async (status) => {
+      listNotifications.mockResolvedValue({
+        items: [notification],
+        page: 1,
+        limit: 20,
+        total: 1
+      });
+      markNotificationRead.mockRejectedValue(new ApiError({
+        status,
+        message: `API error ${status}`
+      }));
+      const toastError = vi.spyOn(toast, 'error');
+      const user = userEvent.setup();
+      renderWithProviders(<NotificationsPage />);
+
+      await user.click(await screen.findByRole('button', { name: 'Đánh dấu đã đọc' }));
+
+      await waitFor(() => expect(toastError).toHaveBeenCalledWith(`API error ${status}`));
+      expect(screen.getByText('Thông báo kiểm tra')).toBeInTheDocument();
+    }
+  );
+
+  it('disables marking a notification while the API request is pending', async () => {
+    let resolveMarkRead;
+    listNotifications.mockResolvedValue({
+      items: [notification],
+      page: 1,
+      limit: 20,
+      total: 1
+    });
+    markNotificationRead.mockReturnValue(new Promise((resolve) => {
+      resolveMarkRead = resolve;
+    }));
+    const user = userEvent.setup();
+    renderWithProviders(<NotificationsPage />);
+
+    await user.click(await screen.findByRole('button', { name: 'Đánh dấu đã đọc' }));
+
+    expect(screen.getByRole('button', { name: 'Đánh dấu đã đọc' })).toBeDisabled();
+    resolveMarkRead({ id: 13, isRead: true });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Đánh dấu đã đọc' })).toBeEnabled());
   });
 });

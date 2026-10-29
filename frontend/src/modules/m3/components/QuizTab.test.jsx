@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../../../shared/api/ApiError.js';
 import { api } from '../../../shared/api/client.js';
 import { getCourseTabs } from '../../../shared/lib/slots.js';
 import { renderWithProviders } from '../../../shared/test-utils/renderWithProviders.jsx';
@@ -111,6 +112,77 @@ describe('QuizTab', () => {
         }]
       })
     ));
+  });
+
+  it.each([401, 403, 409, 422, 429])(
+    'shows the API error when saving a draft returns %i',
+    async (status) => {
+      vi.spyOn(api, 'get').mockResolvedValue({
+        items: [],
+        page: 1,
+        limit: 20,
+        total: 0
+      });
+      vi.spyOn(api, 'post').mockRejectedValue(new ApiError({
+        status,
+        message: `API error ${status}`,
+        details: status === 422
+          ? [{ field: 'title', message: 'Tiêu đề không hợp lệ' }]
+          : null
+      }));
+      const user = userEvent.setup();
+      renderTab();
+
+      await user.click(await screen.findByRole('button', { name: 'Tạo đề thi' }));
+      const dialog = screen.getByRole('dialog');
+      await user.type(within(dialog).getByLabelText(/Tiêu đề/), 'Đề nháp');
+      fireEvent.change(within(dialog).getByLabelText(/Mở đề/), {
+        target: { value: '2030-12-01T08:00' }
+      });
+      fireEvent.change(within(dialog).getByLabelText(/Đóng đề/), {
+        target: { value: '2030-12-01T10:00' }
+      });
+      await user.click(within(dialog).getByRole('button', { name: 'Lưu bản nháp' }));
+
+      await within(dialog).findByText(`API error ${status}`);
+      expect(within(dialog).getAllByRole('alert').map((alert) => alert.textContent)).toContain(`API error ${status}`);
+      if (status === 422) {
+        expect(within(dialog).getAllByText('Tiêu đề không hợp lệ').length).toBeGreaterThan(0);
+      }
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    }
+  );
+
+  it('disables draft controls while the create request is pending', async () => {
+    let resolvePost;
+    vi.spyOn(api, 'get').mockResolvedValue({
+      items: [],
+      page: 1,
+      limit: 20,
+      total: 0
+    });
+    const post = vi.spyOn(api, 'post').mockReturnValue(new Promise((resolve) => {
+      resolvePost = resolve;
+    }));
+    const user = userEvent.setup();
+    renderTab();
+
+    await user.click(await screen.findByRole('button', { name: 'Tạo đề thi' }));
+    const dialog = screen.getByRole('dialog');
+    await user.type(within(dialog).getByLabelText(/Tiêu đề/), 'Đề nháp');
+    fireEvent.change(within(dialog).getByLabelText(/Mở đề/), {
+      target: { value: '2030-12-01T08:00' }
+    });
+    fireEvent.change(within(dialog).getByLabelText(/Đóng đề/), {
+      target: { value: '2030-12-01T10:00' }
+    });
+    await user.click(within(dialog).getByRole('button', { name: 'Lưu bản nháp' }));
+
+    expect(within(dialog).getByRole('button', { name: 'Đang lưu...' })).toBeDisabled();
+    expect(within(dialog).getByLabelText(/Tiêu đề/)).toBeDisabled();
+    expect(post).toHaveBeenCalledTimes(1);
+    resolvePost({ id: 22, status: 'DRAFT' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   it('requires at least one question before publishing and publishes a draft', async () => {
