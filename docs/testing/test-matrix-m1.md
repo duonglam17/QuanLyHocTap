@@ -11,11 +11,15 @@
 - **Tình huống biên & Rủi ro (EC) liên quan:** EC-01, EC-03, EC-08, EC-09, EC-14, EC-15, EC-18, EC-19, EC-20, EC-22, EC-23, EC-24.
 - **Tổng số Scenarios Gherkin:** **23 Scenarios**.
 
-### Thống kê Trạng thái Kiểm thử (Cập nhật sau Bước T2):
+### Thống kê Trạng thái Kiểm thử (Cập nhật sau Bước T3):
 - **Test Unit Service & Controller (Mock/Fake Repo):** Đã bao phủ **23/23 Scenarios** (49 unit tests pass).
 - **Test Tích hợp API Backend (Integration Suite):** Đã bổ sung `backend/tests/m1/m1.integration.test.js` (3 test suites lớn kiểm tra toàn diện 3 cấp độ phân quyền: đúng vai trò, sai vai trò, người ngoài khóa / IDOR; các mã lỗi 400, 401, 403, 404, 409, 422, 429; và đồng hồ giả lập `clock.now()` với lockout 15 phút).
 - **Test Tích hợp CSDL thật (MySQL Integration Suite):** Đã bổ sung `backend/tests/m1/m1.db.test.js` kiểm tra ràng buộc duy nhất (username, email, enrollmentKey, active enrollment), transaction và câu truy vấn khóa dòng `SELECT ... FOR UPDATE` trên CSDL MySQL thật.
-- **Test Frontend Component & Page (Mock API):** Đã bao phủ **23/23 Scenarios** (61 frontend M1 tests pass).
+- **Test Frontend Component & Page (Mock API):** Đã bao phủ toàn diện **23/23 Scenarios** với **82 frontend tests pass** (tăng từ 61 lên 82 tests), kiểm tra:
+  - **3 trạng thái mạng:** Đang tải (Loading Skeleton), Lỗi (Error có nút Thử lại - Retry), Thành công kèm trạng thái Rỗng (Empty state cho từng vai trò).
+  - **Khóa nút khi đang gửi:** Vô hiệu hóa submit button (`disabled={submitting}`) và input fields khi đang gửi request (`CourseFormDialog`, `EnrollmentDialog`, `UserFormDialog`, `ChangeRoleDialog`, `LessonFormDialog`, `MaterialUploadDialog`, `ScheduleFormDialog`).
+  - **Xử lý toàn diện mã lỗi HTTP:** 401, 403 (kể cả IDOR), 404, 409 (xung đột dữ liệu / khóa học lưu trữ), 413 (tệp vượt 50MB), 415 (định dạng không hỗ trợ), 422 (dữ liệu không hợp lệ), 429 (vượt tần suất yêu cầu).
+  - **Xử lý trường null:** Điểm thi/đánh giá null hiển thị `"Chưa có"` (`formatScore(null) === 'Chưa có'`), ngày null (`formatDateTime(null) === 'Chưa có'`), mô tả/nội dung/phòng học null hiển thị đúng thiết kế mà không gây lỗi giao diện.
 - **Test E2E Luồng Giảng dạy (Playwright E2E-1):** **Thiếu** trên các Scenarios thuộc hành trình giảng dạy US-03, US-04, US-05, US-06, US-17, US-18 (tệp `e2e/specs/e1-giang-day.spec.js` sẽ triển khai tại bước T5).
 
 ---
@@ -41,12 +45,12 @@
 | **US-05** | `Tu choi dang tai tep vuot qua dung luong cho phep` | BR-06, EC-03 | **BE:** `lessons.test.js` (50MB limit), `common.test.js`<br>**FE:** `LessonTab.test.jsx` | **Đã có** (Unit, Integration, FE) | Unit, Integration, Frontend |
 | **US-05** | `Ngan chan upload tep tin chua ma doc hoac duoi thuc thi` | BR-06, BR-10, EC-03 | **BE:** `lessons.test.js`, `common.test.js` (magic bytes & extension)<br>**FE:** `LessonTab.test.jsx` | **Đã có** (Unit, Integration, FE) | Unit, Integration, Frontend |
 | **US-06** | `Sinh vien da tham gia khoa hoc tai tai lieu thanh cong` | BR-05, BR-11, EC-18 | **BE:** `lessons.test.js`, `m1.integration.test.js` (enrolled 200)<br>**FE:** `LessonTab.test.jsx`, `LessonDetailPage.test.jsx` | **Đã có** (Unit, Integration, FE) / **Thiếu** (E2E) | Unit, Integration, Frontend, E2E |
-| **US-06** | `Sinh vien chua ghi danh co tinh tai tai lieu qua URL truc tiep (Chong IDOR)` | BR-05, BR-11, EC-01 | **BE:** `lessons.test.js` (403), `m1.integration.test.js` (stranger 403 IDOR, unauth 401) | **Đã có** (Unit, Integration) | Unit, Integration, Frontend |
+| **US-06** | `Sinh vien chua ghi danh co tinh tai tai lieu qua URL truc tiep (Chong IDOR)` | BR-05, BR-11, EC-01 | **BE:** `lessons.test.js` (403), `m1.integration.test.js` (stranger 403 IDOR, unauth 401)<br>**FE:** `LessonDetailPage.test.jsx` (403/404 lỗi tải tệp) | **Đã có** (Unit, Integration, FE) | Unit, Integration, Frontend |
 | **US-17** | `Tao buoi hoc moi thanh cong` | BR-03, BR-19 | **BE:** `schedule.test.js`, `m1.integration.test.js`, `m1.db.test.js`<br>**FE:** `ScheduleTab.test.jsx` | **Đã có** (Unit, Integration, FE) / **Thiếu** (E2E) | Unit, Integration, Frontend, E2E |
 | **US-17** | `Tao buoi hoc that bai do thoi gian khong hop le` (Outline: end <= start, thiếu giờ) | BR-19 | **BE:** `schedule.test.js` (400/422), `m1.integration.test.js` (400/422)<br>**FE:** `ScheduleTab.test.jsx` | **Đã có** (Unit, Integration, FE) | Unit, Integration, Frontend |
 | **US-17** | `Canh bao khi tao buoi hoc trung gio voi buoi hoc da co trong cung khoa hoc` | BR-19, EC-23, EC-24 | **BE:** `schedule.test.js` (409 `SCHEDULE_CONFLICT`), `m1.integration.test.js` (409), `m1.db.test.js` (FOR UPDATE)<br>**FE:** `ScheduleTab.test.jsx` | **Đã có** (Unit, Integration, FE) | Unit, Integration, Frontend |
 | **US-18** | `Sinh vien xem lich hoc cua khoa hoc thanh cong` | BR-05, BR-20, EC-24 | **BE:** `schedule.test.js`, `m1.integration.test.js` (enrolled 200)<br>**FE:** `ScheduleTab.test.jsx`, `MySchedulePage.test.jsx` | **Đã có** (Unit, Integration, FE) / **Thiếu** (E2E) | Unit, Integration, Frontend, E2E |
-| **US-18** | `Sinh vien chua ghi danh co tinh xem lich hoc chi tiet (Chong IDOR)` | BR-05, BR-20, EC-01 | **BE:** `schedule.test.js` (403), `m1.integration.test.js` (stranger 403 IDOR) | **Đã có** (Unit, Integration) | Unit, Integration, Frontend |
+| **US-18** | `Sinh vien chua ghi danh co tinh xem lich hoc chi tiet (Chong IDOR)` | BR-05, BR-20, EC-01 | **BE:** `schedule.test.js` (403), `m1.integration.test.js` (stranger 403 IDOR)<br>**FE:** `MySchedulePage.test.jsx` (401/403 lỗi tải thời khóa biểu) | **Đã có** (Unit, Integration, FE) | Unit, Integration, Frontend |
 
 ---
 
@@ -55,7 +59,7 @@
 ### 3.1. Số liệu Thống kê:
 - **Tổng số Scenarios Gherkin:** **23 mục**.
 - **Số mục đã hoàn tất Unit Test & Integration Test Backend:** **23/23 mục** (100% bao phủ đầy đủ phân quyền 3 loại, IDOR, ràng buộc dữ liệu, các mã lỗi 400/401/403/404/409/422/429, đồng hồ giả lập và MySQL).
-- **Số mục đã hoàn tất Frontend Test:** **23/23 mục** (61/61 tests pass).
+- **Số mục đã hoàn tất Frontend Test:** **23/23 mục** (82/82 tests pass).
 - **Số mục Thiếu E2E Test (Playwright):** **6 User Stories** cốt lõi của hành trình Giảng dạy (US-03, US-04, US-05, US-06, US-17, US-18) chưa có tệp `e2e/specs/e1-giang-day.spec.js` (sẽ triển khai tại bước T5).
 
 ### 3.2. Hướng dẫn Chạy Kiểm thử CSDL MySQL Thật:

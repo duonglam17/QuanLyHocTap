@@ -204,4 +204,136 @@ describe('CoursesPage (US-03, US-04)', () => {
       expect(courseApi.enrollByCode).toHaveBeenCalledWith('WEB2026');
     });
   });
+
+  it('disables submit button and inputs while submitting CourseFormDialog (trạng thái đang gửi)', async () => {
+    courseApi.listCourses.mockResolvedValue({ items: [] });
+    let resolveCreate;
+    courseApi.createCourse.mockReturnValue(
+      new Promise((resolve) => {
+        resolveCreate = resolve;
+      })
+    );
+
+    renderCoursesPage({ user: { id: 2, role: 'GIANG_VIEN' } });
+
+    const createButton = await screen.findByRole('button', { name: 'Tạo khóa học mới' });
+    fireEvent.click(createButton);
+
+    const codeInput = screen.getByLabelText(/Mã môn học/);
+    const titleInput = screen.getByLabelText(/Tên khóa học/);
+    const semesterInput = screen.getByLabelText(/Học kỳ/);
+
+    fireEvent.change(codeInput, { target: { value: 'INT3306' } });
+    fireEvent.change(titleInput, { target: { value: 'Phát triển ứng dụng Web' } });
+    fireEvent.change(semesterInput, { target: { value: 'HK2-2026' } });
+
+    const submitBtn = screen.getByRole('button', { name: 'Xác nhận tạo' });
+    fireEvent.click(submitBtn);
+
+    // Nút submit và các input phải bị vô hiệu hóa khi đang gửi
+    expect(screen.getByRole('button', { name: /Đang lưu/ })).toBeDisabled();
+    expect(codeInput).toBeDisabled();
+    expect(titleInput).toBeDisabled();
+    expect(semesterInput).toBeDisabled();
+
+    resolveCreate({
+      course: { id: 201, code: 'INT3306', title: 'Phát triển ứng dụng Web', ownerId: 2, status: 'DRAFT' }
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: 'Tạo khóa học mới' })).not.toBeInTheDocument();
+    });
+  });
+
+  it('disables submit button while submitting EnrollmentDialog (trạng thái đang gửi)', async () => {
+    courseApi.listCourses.mockResolvedValue({ items: [] });
+    let resolveEnroll;
+    courseApi.enrollByCode.mockReturnValue(
+      new Promise((resolve) => {
+        resolveEnroll = resolve;
+      })
+    );
+
+    renderCoursesPage({ user: { id: 5, role: 'SINH_VIEN' } });
+
+    const enrollButton = await screen.findByRole('button', { name: 'Tham gia khóa học' });
+    fireEvent.click(enrollButton);
+
+    const inputKey = screen.getByLabelText(/Mã ghi danh/);
+    fireEvent.change(inputKey, { target: { value: 'WEB2026' } });
+
+    const submitEnroll = screen.getByRole('button', { name: 'Tham gia' });
+    fireEvent.click(submitEnroll);
+
+    expect(screen.getByRole('button', { name: /Đang xử lý/ })).toBeDisabled();
+    expect(inputKey).toBeDisabled();
+
+    resolveEnroll({ message: 'Ghi danh thành công', courseId: 101 });
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: 'Tham gia khóa học' })).not.toBeInTheDocument();
+    });
+  });
+
+  it('handles HTTP errors (401, 403, 409, 422) when creating a course', async () => {
+    courseApi.listCourses.mockResolvedValue({ items: [] });
+    renderCoursesPage({ user: { id: 2, role: 'GIANG_VIEN' } });
+
+    const createButton = await screen.findByRole('button', { name: 'Tạo khóa học mới' });
+    fireEvent.click(createButton);
+
+    fireEvent.change(screen.getByLabelText(/Mã môn học/), { target: { value: 'INT3306' } });
+    fireEvent.change(screen.getByLabelText(/Tên khóa học/), { target: { value: 'Lập trình nâng cao' } });
+    fireEvent.change(screen.getByLabelText(/Học kỳ/), { target: { value: 'HK1-2026' } });
+
+    const submitBtn = screen.getByRole('button', { name: 'Xác nhận tạo' });
+
+    // 401 Unauthorized
+    courseApi.createCourse.mockRejectedValueOnce(
+      new ApiError({ status: 401, message: 'Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.' })
+    );
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText('Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.')).toBeInTheDocument();
+
+    // 403 Forbidden
+    courseApi.createCourse.mockRejectedValueOnce(
+      new ApiError({ status: 403, message: 'Bạn không có quyền tạo khóa học.' })
+    );
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText('Bạn không có quyền tạo khóa học.')).toBeInTheDocument();
+
+    // 409 Conflict (Mã môn học hoặc mã ghi danh trùng)
+    courseApi.createCourse.mockRejectedValueOnce(
+      new ApiError({ status: 409, message: 'Mã môn học đã tồn tại trong học kỳ này' })
+    );
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText('Mã môn học đã tồn tại trong học kỳ này')).toBeInTheDocument();
+
+    // 422 Unprocessable Entity
+    courseApi.createCourse.mockRejectedValueOnce(
+      new ApiError({ status: 422, message: 'Dữ liệu khóa học không hợp lệ' })
+    );
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText('Dữ liệu khóa học không hợp lệ')).toBeInTheDocument();
+  });
+
+  it('renders courses with null description and null enrollment key without error', async () => {
+    const mockCourses = [
+      {
+        id: 103,
+        code: 'INT9999',
+        title: 'Khóa học không có mô tả',
+        semester: 'HK1-2026',
+        description: null,
+        ownerId: 2,
+        status: 'PUBLISHED',
+        enrollment_key: null
+      }
+    ];
+    courseApi.listCourses.mockResolvedValue({ items: mockCourses });
+
+    renderCoursesPage({ user: { id: 2, role: 'GIANG_VIEN' } });
+
+    expect(await screen.findByText('Khóa học không có mô tả')).toBeInTheDocument();
+    expect(screen.getByText('INT9999')).toBeInTheDocument();
+  });
 });
