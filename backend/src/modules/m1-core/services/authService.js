@@ -36,6 +36,7 @@ class AuthService {
     this.config = config;
     this.refreshTokenTtlMs = parseDurationMs(config.REFRESH_TOKEN_EXPIRES_IN);
     this.tokenFactory = tokenFactory;
+    this.recentRotations = new Map();
   }
 
   _createAccessToken(user) {
@@ -126,16 +127,37 @@ class AuthService {
       throw new BadRequestError('Refresh token là bắt buộc');
     }
 
-    const nextRefreshToken = this.tokenFactory();
-    const user = await this.authRepository.rotateRefreshToken(
-      hashToken(refreshToken),
-      hashToken(nextRefreshToken),
-      this._newRefreshTokenExpiry()
-    );
-    if (!user) {
-      throw new UnauthorizedError(refreshTokenMessage);
+    const tokenHash = hashToken(refreshToken);
+    if (!this.inFlightRefreshes) {
+      this.inFlightRefreshes = new Map();
     }
-    return this._createTokenResponse(user, nextRefreshToken);
+    const pending = this.inFlightRefreshes.get(tokenHash);
+    if (pending) {
+      return pending;
+    }
+
+    const executeRefresh = async () => {
+      const nextRefreshToken = this.tokenFactory();
+      const nextTokenHash = hashToken(nextRefreshToken);
+      const user = await this.authRepository.rotateRefreshToken(
+        tokenHash,
+        nextTokenHash,
+        this._newRefreshTokenExpiry()
+      );
+      if (!user) {
+        throw new UnauthorizedError(refreshTokenMessage);
+      }
+
+      return this._createTokenResponse(user, nextRefreshToken);
+    };
+
+    const task = executeRefresh();
+    this.inFlightRefreshes.set(tokenHash, task);
+    try {
+      return await task;
+    } finally {
+      this.inFlightRefreshes.delete(tokenHash);
+    }
   }
 
   async logout(userId) {
