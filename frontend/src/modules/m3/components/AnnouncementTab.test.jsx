@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../../../shared/api/ApiError.js';
 import { api } from '../../../shared/api/client.js';
 import { getCourseTabs } from '../../../shared/lib/slots.js';
 import { renderWithProviders } from '../../../shared/test-utils/renderWithProviders.jsx';
@@ -132,6 +133,50 @@ describe('AnnouncementTab', () => {
       '/courses/3/announcements',
       { title: 'Thông báo mới', content: 'Nội dung mới' }
     ));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it.each([401, 403, 409, 422, 429])(
+    'shows the API error when creating an announcement returns %i',
+    async (status) => {
+      vi.spyOn(api, 'get').mockResolvedValue(createPage({ items: [], total: 0 }));
+      vi.spyOn(api, 'post').mockRejectedValue(new ApiError({
+        status,
+        message: `API error ${status}`
+      }));
+      const user = userEvent.setup();
+      renderTab({ role: 'GIANG_VIEN', isOwner: true });
+
+      await user.click(await screen.findByRole('button', { name: 'Tạo thông báo' }));
+      const dialog = screen.getByRole('dialog');
+      await user.type(within(dialog).getByLabelText(/Tiêu đề/), 'Thông báo mới');
+      await user.type(within(dialog).getByLabelText(/Nội dung/), 'Nội dung mới');
+      await user.click(within(dialog).getByRole('button', { name: 'Đăng thông báo' }));
+
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent(`API error ${status}`);
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    }
+  );
+
+  it('disables announcement submission while the API request is pending', async () => {
+    let resolvePost;
+    vi.spyOn(api, 'get').mockResolvedValue(createPage({ items: [], total: 0 }));
+    const post = vi.spyOn(api, 'post').mockReturnValue(new Promise((resolve) => {
+      resolvePost = resolve;
+    }));
+    const user = userEvent.setup();
+    renderTab({ role: 'GIANG_VIEN', isOwner: true });
+
+    await user.click(await screen.findByRole('button', { name: 'Tạo thông báo' }));
+    const dialog = screen.getByRole('dialog');
+    await user.type(within(dialog).getByLabelText(/Tiêu đề/), 'Thông báo mới');
+    await user.type(within(dialog).getByLabelText(/Nội dung/), 'Nội dung mới');
+    await user.click(within(dialog).getByRole('button', { name: 'Đăng thông báo' }));
+
+    const pendingButton = within(dialog).getByRole('button', { name: 'Đang đăng...' });
+    expect(pendingButton).toBeDisabled();
+    expect(post).toHaveBeenCalledTimes(1);
+    resolvePost({ id: 72, title: 'Thông báo mới', content: 'Nội dung mới' });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
