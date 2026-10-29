@@ -11,11 +11,12 @@
 - **Tình huống biên & Rủi ro (EC) liên quan:** EC-01, EC-03, EC-08, EC-09, EC-14, EC-15, EC-18, EC-19, EC-20, EC-22, EC-23, EC-24.
 - **Tổng số Scenarios Gherkin:** **23 Scenarios**.
 
-### Thống kê Trạng thái Kiểm thử (Cập nhật sau Bước T3):
+### Thống kê Trạng thái Kiểm thử (Cập nhật sau Bước T4):
 - **Test Unit Service & Controller (Mock/Fake Repo):** Đã bao phủ **23/23 Scenarios** (49 unit tests pass).
-- **Test Tích hợp API Backend (Integration Suite):** Đã bổ sung `backend/tests/m1/m1.integration.test.js` (3 test suites lớn kiểm tra toàn diện 3 cấp độ phân quyền: đúng vai trò, sai vai trò, người ngoài khóa / IDOR; các mã lỗi 400, 401, 403, 404, 409, 422, 429; và đồng hồ giả lập `clock.now()` với lockout 15 phút).
-- **Test Tích hợp CSDL thật (MySQL Integration Suite):** Đã bổ sung `backend/tests/m1/m1.db.test.js` kiểm tra ràng buộc duy nhất (username, email, enrollmentKey, active enrollment), transaction và câu truy vấn khóa dòng `SELECT ... FOR UPDATE` trên CSDL MySQL thật.
-- **Test Frontend Component & Page (Mock API):** Đã bao phủ toàn diện **23/23 Scenarios** với **82 frontend tests pass** (tăng từ 61 lên 82 tests), kiểm tra:
+- **Test Bao phủ Nhánh & Biên (Coverage Suite T4):** Đã bổ sung `backend/tests/m1/m1.coverage.test.js` kiểm tra toàn diện các nhánh biên, xử lý lỗi, validate ký tự, kiểm tra tính bất biến (idempotency) và xóa an toàn cho tất cả Services M1.
+- **Test Tích hợp API Backend (Integration Suite T2):** Đã bổ sung `backend/tests/m1/m1.integration.test.js` (3 test suites lớn kiểm tra toàn diện 3 cấp độ phân quyền: đúng vai trò, sai vai trò, người ngoài khóa / IDOR; các mã lỗi 400, 401, 403, 404, 409, 422, 429; và đồng hồ giả lập `clock.now()` với lockout 15 phút).
+- **Test Tích hợp CSDL thật (MySQL Integration Suite T2):** Đã bổ sung `backend/tests/m1/m1.db.test.js` kiểm tra ràng buộc duy nhất (username, email, enrollmentKey, active enrollment), transaction và câu truy vấn khóa dòng `SELECT ... FOR UPDATE` trên CSDL MySQL thật.
+- **Test Frontend Component & Page (Mock API T3):** Đã bao phủ toàn diện **23/23 Scenarios** với **82 frontend tests pass** (tăng từ 61 lên 82 tests), kiểm tra:
   - **3 trạng thái mạng:** Đang tải (Loading Skeleton), Lỗi (Error có nút Thử lại - Retry), Thành công kèm trạng thái Rỗng (Empty state cho từng vai trò).
   - **Khóa nút khi đang gửi:** Vô hiệu hóa submit button (`disabled={submitting}`) và input fields khi đang gửi request (`CourseFormDialog`, `EnrollmentDialog`, `UserFormDialog`, `ChangeRoleDialog`, `LessonFormDialog`, `MaterialUploadDialog`, `ScheduleFormDialog`).
   - **Xử lý toàn diện mã lỗi HTTP:** 401, 403 (kể cả IDOR), 404, 409 (xung đột dữ liệu / khóa học lưu trữ), 413 (tệp vượt 50MB), 415 (định dạng không hỗ trợ), 422 (dữ liệu không hợp lệ), 429 (vượt tần suất yêu cầu).
