@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { AuthContext } from '@/shared/auth/authContext.js';
+import { ApiError } from '@/shared/api/ApiError.js';
 import * as slotsLib from '@/shared/lib/slots.js';
 import * as lessonApi from '../api/lessons.js';
 import { LessonDetailPage } from './LessonDetailPage.jsx';
@@ -151,5 +152,100 @@ describe('LessonDetailPage (US-05, US-06, Lesson Section Slots)', () => {
 
     expect(await screen.findByTestId('mock-discussion-section')).toBeInTheDocument();
     expect(screen.getByText('Diễn đàn thảo luận bài học 10')).toBeInTheDocument();
+  });
+
+  it('disables submit button and input fields while uploading material (trạng thái đang gửi)', async () => {
+    lessonApi.listMaterials.mockResolvedValue({ items: [] });
+    let resolveUpload;
+    lessonApi.uploadMaterial.mockReturnValue(
+      new Promise((resolve) => {
+        resolveUpload = resolve;
+      })
+    );
+
+    renderLessonDetailPage();
+
+    const uploadTrigger = screen.getByRole('button', { name: 'Tải lên tài liệu mới' });
+    fireEvent.click(uploadTrigger);
+
+    const titleInput = screen.getByLabelText(/Tiêu đề tài liệu/);
+    fireEvent.change(titleInput, { target: { value: 'Tài liệu mẫu' } });
+
+    const dummyFile = new File(['data'], 'sample.pdf', { type: 'application/pdf' });
+    const fileInput = screen.getByLabelText(/Chọn tệp tài liệu/);
+    fireEvent.change(fileInput, { target: { files: [dummyFile] } });
+
+    const submitBtn = screen.getByRole('button', { name: 'Tải lên' });
+    fireEvent.click(submitBtn);
+
+    expect(screen.getByRole('button', { name: /Đang xử lý/ })).toBeDisabled();
+    expect(titleInput).toBeDisabled();
+
+    resolveUpload({ material: { id: 200, title: 'Tài liệu mẫu' } });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: 'Tải lên tài liệu học tập' })).not.toBeInTheDocument();
+    });
+  });
+
+  it('handles HTTP errors (403, 409, 413, 415) in MaterialUploadDialog', async () => {
+    lessonApi.listMaterials.mockResolvedValue({ items: [] });
+    renderLessonDetailPage();
+
+    const uploadTrigger = screen.getByRole('button', { name: 'Tải lên tài liệu mới' });
+    fireEvent.click(uploadTrigger);
+
+    const titleInput = screen.getByLabelText(/Tiêu đề tài liệu/);
+    fireEvent.change(titleInput, { target: { value: 'Tài liệu kiểm tra lỗi' } });
+
+    const dummyFile = new File(['data'], 'test.pdf', { type: 'application/pdf' });
+    const fileInput = screen.getByLabelText(/Chọn tệp tài liệu/);
+    fireEvent.change(fileInput, { target: { files: [dummyFile] } });
+
+    const submitBtn = screen.getByRole('button', { name: 'Tải lên' });
+
+    // 403 Forbidden
+    lessonApi.uploadMaterial.mockRejectedValueOnce(
+      new ApiError({ status: 403, message: 'Bạn không có quyền tải tài liệu cho bài học này.' })
+    );
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText('Bạn không có quyền tải tài liệu cho bài học này.')).toBeInTheDocument();
+
+    // 409 Conflict
+    lessonApi.uploadMaterial.mockRejectedValueOnce(
+      new ApiError({ status: 409, message: 'Khóa học đã lưu trữ, không thể tải thêm tài liệu.' })
+    );
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText('Khóa học đã lưu trữ, không thể tải thêm tài liệu.')).toBeInTheDocument();
+
+    // 413 Over 50MB
+    lessonApi.uploadMaterial.mockRejectedValueOnce(
+      new ApiError({ status: 413, message: 'Dung lượng tệp vượt quá giới hạn tối đa 50MB.' })
+    );
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText('Dung lượng tệp vượt quá giới hạn tối đa 50MB.')).toBeInTheDocument();
+
+    // 415 Unsupported media type
+    lessonApi.uploadMaterial.mockRejectedValueOnce(
+      new ApiError({ status: 415, message: 'Loại định dạng tệp không được hỗ trợ. Chỉ chấp nhận PDF, DOCX, PPTX, ZIP, RAR.' })
+    );
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText('Loại định dạng tệp không được hỗ trợ. Chỉ chấp nhận PDF, DOCX, PPTX, ZIP, RAR.')).toBeInTheDocument();
+  });
+
+  it('renders lesson with null content gracefully without crashing', async () => {
+    lessonApi.listMaterials.mockResolvedValue({ items: [] });
+    renderLessonDetailPage({
+      lesson: {
+        id: 99,
+        courseId: 101,
+        title: 'Bài học không có nội dung',
+        orderIndex: 5,
+        content: null
+      }
+    });
+
+    expect(await screen.findByText('Bài học không có nội dung')).toBeInTheDocument();
+    expect(screen.getByText('Bài 5')).toBeInTheDocument();
   });
 });

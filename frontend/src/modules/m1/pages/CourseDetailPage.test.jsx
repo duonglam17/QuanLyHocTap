@@ -2,12 +2,22 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { AuthContext } from '@/shared/auth/authContext.js';
+import { ApiError } from '@/shared/api/ApiError.js';
+import { toast } from '@/shared/components/molecules/Toast.jsx';
+import { formatScore, formatDateTime } from '@/shared/lib/formatters.js';
 import * as slotsLib from '@/shared/lib/slots.js';
 import * as courseApi from '../api/courses.js';
 import { CourseDetailPage } from './CourseDetailPage.jsx';
 
 vi.mock('../api/courses.js');
 vi.mock('@/shared/lib/slots.js');
+vi.mock('@/shared/components/molecules/Toast.jsx', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn()
+  }
+}));
 
 function renderCourseDetailPage({
   courseId = '101',
@@ -184,5 +194,113 @@ describe('CourseDetailPage (US-03, US-04, Slots & Archive)', () => {
     expect(screen.getByText('Course ID: 101')).toBeInTheDocument();
     expect(screen.getByText('Owner: true')).toBeInTheDocument();
     expect(screen.getByText('Role: GIANG_VIEN')).toBeInTheDocument();
+  });
+
+  it('disables submit button and inputs while updating course details (trạng thái đang gửi)', async () => {
+    const activeCourse = {
+      id: 101,
+      code: 'INT3101',
+      title: 'Lập trình Web nâng cao',
+      semester: 'HK1-2026',
+      description: 'Mô tả ban đầu',
+      ownerId: 2,
+      status: 'PUBLISHED',
+      enrollment_key: 'WEB2026'
+    };
+    courseApi.getCourse.mockResolvedValue({ course: activeCourse });
+    let resolveUpdate;
+    courseApi.updateCourse.mockReturnValue(
+      new Promise((resolve) => {
+        resolveUpdate = resolve;
+      })
+    );
+
+    renderCourseDetailPage({ user: { id: 2, role: 'GIANG_VIEN' } });
+
+    expect(await screen.findByText('Lập trình Web nâng cao')).toBeInTheDocument();
+
+    const editBtn = screen.getByRole('button', { name: 'Sửa' });
+    fireEvent.click(editBtn);
+
+    expect(screen.getByRole('heading', { name: 'Chỉnh sửa khóa học' })).toBeInTheDocument();
+
+    const submitBtn = screen.getByRole('button', { name: 'Lưu thay đổi' });
+    fireEvent.click(submitBtn);
+
+    // Verify submit button is disabled with loading state
+    expect(screen.getByRole('button', { name: /Đang lưu/ })).toBeDisabled();
+
+    resolveUpdate({
+      course: { ...activeCourse, title: 'Lập trình Web nâng cao (Đã cập nhật)' }
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: 'Chỉnh sửa khóa học' })).not.toBeInTheDocument();
+    });
+  });
+
+  it('handles 401, 403 (IDOR) and 409 errors when publishing course', async () => {
+    const draftCourse = {
+      id: 101,
+      code: 'INT3101',
+      title: 'Lập trình Web nâng cao',
+      semester: 'HK1-2026',
+      ownerId: 2,
+      status: 'DRAFT',
+      enrollment_key: 'WEB2026'
+    };
+    courseApi.getCourse.mockResolvedValue({ course: draftCourse });
+
+    renderCourseDetailPage({ user: { id: 2, role: 'GIANG_VIEN' } });
+    expect(await screen.findByText('Lập trình Web nâng cao')).toBeInTheDocument();
+
+    // 403 IDOR
+    courseApi.publishCourse.mockRejectedValueOnce(
+      new ApiError({ status: 403, message: 'Bạn không có quyền xuất bản khóa học này.' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Xuất bản' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Xuất bản' })); // ConfirmDialog
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('Bạn không có quyền xuất bản khóa học này.');
+    });
+
+    // 409 Conflict
+    courseApi.publishCourse.mockRejectedValueOnce(
+      new ApiError({ status: 409, message: 'Khóa học đã được xuất bản hoặc đã lưu trữ.' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Xuất bản' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Xuất bản' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('Khóa học đã được xuất bản hoặc đã lưu trữ.');
+    });
+  });
+
+  it('renders course with null description and null enrollment_key without crashing', async () => {
+    const courseWithNulls = {
+      id: 105,
+      code: 'INT4000',
+      title: 'Chuyên đề tốt nghiệp',
+      semester: 'HK2-2026',
+      description: null,
+      ownerId: 2,
+      status: 'PUBLISHED',
+      enrollment_key: null
+    };
+    courseApi.getCourse.mockResolvedValue({ course: courseWithNulls });
+
+    renderCourseDetailPage({ user: { id: 2, role: 'GIANG_VIEN' } });
+
+    expect(await screen.findByText('Chuyên đề tốt nghiệp')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Sao chép mã ghi danh')).not.toBeInTheDocument();
+  });
+
+  it('verifies formatScore and formatDateTime return "Chưa có" when values are null or undefined', () => {
+    expect(formatScore(null)).toBe('Chưa có');
+    expect(formatScore(undefined)).toBe('Chưa có');
+    expect(formatDateTime(null)).toBe('Chưa có');
+    expect(formatDateTime(undefined)).toBe('Chưa có');
+    expect(formatScore(8.5)).toBe('8,5');
   });
 });

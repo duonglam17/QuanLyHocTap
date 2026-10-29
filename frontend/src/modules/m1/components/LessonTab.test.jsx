@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { AuthContext } from '@/shared/auth/authContext.js';
+import { ApiError } from '@/shared/api/ApiError.js';
 import * as lessonApi from '../api/lessons.js';
 import { LessonTab } from './LessonTab.jsx';
 
@@ -190,5 +191,98 @@ describe('LessonTab (US-05, US-06)', () => {
         expect.any(Function)
       );
     });
+  });
+
+  it('disables submit button and inputs while submitting LessonFormDialog (trạng thái đang gửi)', async () => {
+    lessonApi.listLessons.mockResolvedValue({ items: mockLessons });
+    let resolveCreate;
+    lessonApi.createLesson.mockReturnValue(
+      new Promise((resolve) => {
+        resolveCreate = resolve;
+      })
+    );
+
+    renderLessonTab({ isOwner: true });
+    await screen.findByText('Bài 1: Giới thiệu khóa học');
+
+    const addBtn = screen.getByRole('button', { name: 'Thêm bài học' });
+    fireEvent.click(addBtn);
+
+    const titleInput = screen.getByLabelText(/Tiêu đề bài học/);
+    const orderInput = screen.getByLabelText(/Thứ tự/);
+    fireEvent.change(titleInput, { target: { value: 'Bài 4: Kiểm thử ứng dụng' } });
+
+    const submitBtn = screen.getByRole('button', { name: 'Tạo bài học' });
+    fireEvent.click(submitBtn);
+
+    expect(screen.getByRole('button', { name: /Đang lưu/ })).toBeDisabled();
+    expect(titleInput).toBeDisabled();
+    expect(orderInput).toBeDisabled();
+
+    resolveCreate({
+      lesson: { id: 40, courseId: 101, title: 'Bài 4: Kiểm thử ứng dụng', orderIndex: 3 }
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: 'Thêm bài học mới' })).not.toBeInTheDocument();
+    });
+  });
+
+  it('handles HTTP errors (401, 403, 409, 422) when creating a lesson', async () => {
+    lessonApi.listLessons.mockResolvedValue({ items: mockLessons });
+    renderLessonTab({ isOwner: true });
+    await screen.findByText('Bài 1: Giới thiệu khóa học');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Thêm bài học' }));
+    fireEvent.change(screen.getByLabelText(/Tiêu đề bài học/), { target: { value: 'Bài mới' } });
+
+    const submitBtn = screen.getByRole('button', { name: 'Tạo bài học' });
+
+    // 401 Unauthorized
+    lessonApi.createLesson.mockRejectedValueOnce(
+      new ApiError({ status: 401, message: 'Hết phiên đăng nhập' })
+    );
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText('Hết phiên đăng nhập')).toBeInTheDocument();
+
+    // 403 Forbidden
+    lessonApi.createLesson.mockRejectedValueOnce(
+      new ApiError({ status: 403, message: 'Bạn không có quyền thêm bài học vào khóa học này.' })
+    );
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText('Bạn không có quyền thêm bài học vào khóa học này.')).toBeInTheDocument();
+
+    // 409 Conflict (khóa học đã lưu trữ)
+    lessonApi.createLesson.mockRejectedValueOnce(
+      new ApiError({ status: 409, message: 'Khóa học đã lưu trữ, không thể thêm bài học mới.' })
+    );
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText('Khóa học đã lưu trữ, không thể thêm bài học mới.')).toBeInTheDocument();
+
+    // 422 Validation Error
+    lessonApi.createLesson.mockRejectedValueOnce(
+      new ApiError({ status: 422, message: 'Tiêu đề bài học không được vượt quá 255 ký tự' })
+    );
+    fireEvent.click(submitBtn);
+    expect(await screen.findByText('Tiêu đề bài học không được vượt quá 255 ký tự')).toBeInTheDocument();
+  });
+
+  it('renders lessons with null content gracefully without error', async () => {
+    const lessonsWithNull = [
+      {
+        id: 99,
+        courseId: 101,
+        title: 'Bài 99: Không có nội dung tóm tắt',
+        orderIndex: 99,
+        content: null,
+        materials: []
+      }
+    ];
+    lessonApi.listLessons.mockResolvedValue({ items: lessonsWithNull });
+
+    renderLessonTab({ isOwner: true });
+
+    expect(await screen.findByText('Bài 99: Không có nội dung tóm tắt')).toBeInTheDocument();
+    expect(screen.getByText('Bài 99')).toBeInTheDocument();
   });
 });
