@@ -22,8 +22,13 @@ test('M1 DB: MySQL integration suite for Module M1 Repositories and Constraints'
       connectTimeout: 2000
     });
   } catch (error) {
-    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
-      t.skip(`MySQL test database is unavailable (${error.code}). Cách chạy: Khởi động MySQL/XAMPP và chạy lại.`);
+    if (
+      error.code === 'ECONNREFUSED' ||
+      error.code === 'ENOTFOUND' ||
+      error.code === 'ER_ACCESS_DENIED_ERROR' ||
+      error.code === 'ER_BAD_DB_ERROR'
+    ) {
+      t.skip(`MySQL test database is unavailable (${error.code}). Cách chạy: Thiết lập DB_USER/DB_PASSWORD/DB_NAME hợp lệ hoặc khởi động MySQL/XAMPP và chạy lại.`);
       return;
     }
     throw error;

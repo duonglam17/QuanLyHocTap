@@ -6,8 +6,13 @@ function createAuthRouter({ authController }) {
     throw new TypeError('createAuthRouter yêu cầu AuthController.');
   }
   const router = Router();
-  const isE2E = process.env.DB_NAME === 'lms_e2e' || Boolean(process.env.E2E_BACKEND_URL);
-  const loginRateLimitMax = Number(process.env.RATE_LIMIT_LOGIN_MAX) || (isE2E ? 100 : 5);
+  const isTestOrE2E =
+    process.env.NODE_ENV === 'test' ||
+    process.env.DB_NAME === 'lms_e2e' ||
+    Boolean(process.env.E2E_BACKEND_URL) ||
+    Boolean(process.env.CI);
+  const loginRateLimitMax =
+    Number(process.env.RATE_LIMIT_LOGIN_MAX) || (isTestOrE2E ? 100 : 5);
 
   router.post(
     '/login',

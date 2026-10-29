@@ -130,32 +130,49 @@ class AuthRepository {
   }
 
   async rotateRefreshToken(oldTokenHash, newTokenHash, expiresAt) {
-    return this.transactionRunner(async (connection) => {
-      const [rows] = await connection.query(
-        `SELECT rt.id AS refresh_token_id, u.id, u.role_id, u.status,
-                u.token_version, u.must_change_password, r.name AS role
-         FROM refresh_tokens rt
-         JOIN users u ON u.id = rt.user_id
-         JOIN roles r ON r.id = u.role_id
-         WHERE rt.token_hash = ?
-           AND rt.expires_at > CURRENT_TIMESTAMP
-           AND u.status = 'ACTIVE'
-           AND u.deleted_at IS NULL
-         FOR UPDATE`,
-        [oldTokenHash]
-      );
-      const user = rows[0];
-      if (!user) {
-        return null;
-      }
+    let attempts = 3;
+    while (attempts > 0) {
+      try {
+        return await this.transactionRunner(async (connection) => {
+          const [rtRows] = await connection.query(
+            `SELECT id, user_id FROM refresh_tokens
+             WHERE token_hash = ? AND expires_at > CURRENT_TIMESTAMP
+             FOR UPDATE`,
+            [oldTokenHash]
+          );
+          const rt = rtRows[0];
+          if (!rt) {
+            return null;
+          }
 
-      await connection.query('DELETE FROM refresh_tokens WHERE id = ?', [user.refresh_token_id]);
-      await connection.query(
-        'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)',
-        [user.id, newTokenHash, expiresAt]
-      );
-      return user;
-    }, this.db.getPool());
+          const [userRows] = await connection.query(
+            `SELECT u.id, u.role_id, u.status, u.token_version, u.must_change_password, r.name AS role
+             FROM users u
+             JOIN roles r ON r.id = u.role_id
+             WHERE u.id = ? AND u.status = 'ACTIVE' AND u.deleted_at IS NULL`,
+            [rt.user_id]
+          );
+          const user = userRows[0];
+          if (!user) {
+            return null;
+          }
+
+          await connection.query('DELETE FROM refresh_tokens WHERE id = ?', [rt.id]);
+          await connection.query(
+            'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)',
+            [user.id, newTokenHash, expiresAt]
+          );
+          return user;
+        }, this.db.getPool());
+      } catch (err) {
+        attempts--;
+        if (attempts > 0 && (err.code === 'ER_LOCK_DEADLOCK' || err.message?.includes('Deadlock'))) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          continue;
+        }
+        throw err;
+      }
+    }
   }
 
   async revokeAllSessions(userId) {
