@@ -281,6 +281,27 @@ describe('QuizRoomPage', () => {
     expect(screen.getByLabelText('Thời gian còn lại')).toHaveTextContent('58:20');
   });
 
+  it('does not submit while an answer is queued offline', async () => {
+    vi.spyOn(api, 'patch').mockResolvedValue({
+      saved: true,
+      remaining_seconds: 3500
+    });
+    const user = userEvent.setup();
+    renderRoom();
+    await screen.findByRole('group', { name: /Hai cộng hai bằng mấy/ });
+    Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: false });
+    fireEvent(window, new Event('offline'));
+    await user.click(screen.getByLabelText('Năm'));
+    await user.click(screen.getByRole('button', { name: 'Nộp bài' }));
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Nộp bài' }));
+
+    expect(await screen.findByText(
+      'Không có kết nối mạng. Đáp án chưa lưu; hãy kết nối lại trước khi nộp bài.'
+    )).toBeInTheDocument();
+    expect(api.post).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText('Năm')).toBeChecked();
+  });
+
   it('automatically submits when the server-synchronized countdown reaches zero', async () => {
     vi.useFakeTimers();
     let monotonicNow = 0;
@@ -316,6 +337,39 @@ describe('QuizRoomPage', () => {
       clientInstanceId: instanceId,
       sessionToken: 'session-token-1'
     });
+  });
+
+  it.each([
+    [60, 'Còn 1 phút, hãy hoàn tất và nộp bài.'],
+    [61, 'Còn 5 phút, hãy kiểm tra lại câu trả lời.'],
+    [300, 'Còn 5 phút, hãy kiểm tra lại câu trả lời.'],
+    [301, null]
+  ])('shows the correct timer warning at %i seconds remaining', async (seconds, warning) => {
+    vi.useFakeTimers();
+    vi.spyOn(performance, 'now').mockReturnValue(0);
+    vi.mocked(api.post).mockImplementation((path) => {
+      if (path.endsWith('/start')) {
+        return Promise.resolve(createSession({ remaining_seconds: seconds }));
+      }
+      return Promise.resolve({
+        attemptId: 101,
+        status: 'AUTO_SUBMITTED',
+        submittedAt: '2030-12-01T01:30:00.000Z',
+        score: null,
+        visibleToStudent: false
+      });
+    });
+    renderRoom();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    if (warning) {
+      expect(screen.getByText(warning)).toBeInTheDocument();
+    } else {
+      expect(screen.queryByText(/Còn [15] phút/)).not.toBeInTheDocument();
+    }
   });
 
   it('confirms submission, reports unanswered questions, and prevents duplicate submits', async () => {

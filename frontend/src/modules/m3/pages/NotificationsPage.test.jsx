@@ -119,6 +119,21 @@ describe('NotificationsPage', () => {
     expect(listNotifications).toHaveBeenCalledWith({ page: 2, limit: 20 });
   });
 
+  it('does not render a link for an unsafe notification destination', async () => {
+    listNotifications.mockResolvedValue({
+      items: [{ ...notification, isRead: true, link: 'javascript:alert(1)' }],
+      page: 1,
+      limit: 20,
+      total: 1
+    });
+
+    renderWithProviders(<NotificationsPage />);
+
+    expect(await screen.findByText('Thông báo kiểm tra')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Mở thông báo' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Đánh dấu đã đọc' })).not.toBeInTheDocument();
+  });
+
   it.each([401, 403, 409, 422, 429])(
     'reports notification read API errors with status %i',
     async (status) => {

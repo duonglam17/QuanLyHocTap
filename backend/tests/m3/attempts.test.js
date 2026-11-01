@@ -227,6 +227,9 @@ function createService({
     logger,
     getGradingCount: () => gradingCount,
     getAttempt: () => attempt,
+    setAttempt(value) {
+      attempt = value && { ...value };
+    },
     setNow(value) {
       nowValue = value;
     }
@@ -364,6 +367,84 @@ test('takeover is rejected after five replacements', async () => {
     (error) => error.code === 'SESSION_TAKEOVER_LIMIT' && error.statusCode === 409
   );
   assert.equal(takeoverUpdates.length, 0);
+});
+
+test('a lost takeover race resumes only when the requesting client became the winner', async (t) => {
+  await t.test('same client won concurrently', async () => {
+    const { service, repository, getAttempt, setAttempt } = createService({
+      initialAttempt: createAttempt()
+    });
+    repository.takeOverAttempt = async () => {
+      setAttempt({
+        ...getAttempt(),
+        clientInstanceId: 'tab-two',
+        sessionToken: 'concurrent-winner',
+        takeoverCount: 1
+      });
+      return false;
+    };
+
+    const result = await service.startAttempt(5, 12, {
+      clientInstanceId: 'tab-two',
+      takeOver: true
+    });
+
+    assert.equal(result.clientInstanceId, 'tab-two');
+    assert.equal(result.sessionToken, 'concurrent-winner');
+  });
+
+  await t.test('another client won concurrently', async () => {
+    const { service, repository, getAttempt, setAttempt } = createService({
+      initialAttempt: createAttempt()
+    });
+    repository.takeOverAttempt = async () => {
+      setAttempt({
+        ...getAttempt(),
+        clientInstanceId: 'tab-three',
+        sessionToken: 'other-winner',
+        takeoverCount: 1
+      });
+      return false;
+    };
+
+    await assert.rejects(
+      service.startAttempt(5, 12, {
+        clientInstanceId: 'tab-two',
+        takeOver: true
+      }),
+      (error) => {
+        assert.equal(error.code, 'SESSION_ACTIVE_ELSEWHERE');
+        assert.equal(error.statusCode, 409);
+        assert.equal(error.details, null);
+        assert.equal(Object.hasOwn(error, 'questions'), false);
+        assert.equal(Object.hasOwn(error, 'savedAnswers'), false);
+        return true;
+      }
+    );
+  });
+
+  await t.test('takeover limit was reached concurrently', async () => {
+    const { service, repository, getAttempt, setAttempt } = createService({
+      initialAttempt: createAttempt()
+    });
+    repository.takeOverAttempt = async () => {
+      setAttempt({
+        ...getAttempt(),
+        clientInstanceId: 'tab-three',
+        sessionToken: 'other-winner',
+        takeoverCount: MAX_SESSION_TAKEOVERS
+      });
+      return false;
+    };
+
+    await assert.rejects(
+      service.startAttempt(5, 12, {
+        clientInstanceId: 'tab-two',
+        takeOver: true
+      }),
+      (error) => error.code === 'SESSION_TAKEOVER_LIMIT' && error.statusCode === 409
+    );
+  });
 });
 
 test('expired and submitted attempts cannot be taken over', async (t) => {
