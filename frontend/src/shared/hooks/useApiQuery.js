@@ -27,21 +27,44 @@ export function useApiQuery(key, fetcher, { enabled = true, refetchInterval } = 
     }
   }, []);
 
-  useEffect(() => {
+    useEffect(() => {
     if (!enabled) {
-      setState((current) => ({ ...current, error: null, status: 'success' }));
+      setState((current) => ({
+        ...current,
+        error: null,
+        status: 'success'
+      }));
       return undefined;
     }
 
     let active = true;
-    setState((current) => ({ ...current, error: null, status: 'loading' }));
+
+    setState((current) => ({
+      ...current,
+      error: null,
+      status: 'loading'
+    }));
+
     fetcherRef.current()
       .then((data) => {
-        if (active) setState({ data, error: null, status: 'success' });
+        if (active) {
+          setState({
+            data,
+            error: null,
+            status: 'success'
+          });
+        }
       })
       .catch((error) => {
-        if (active) setState((current) => ({ ...current, error, status: 'error' }));
+        if (active) {
+          setState((current) => ({
+            ...current,
+            error,
+            status: 'error'
+          }));
+        }
       });
+
     return () => {
       active = false;
     };
