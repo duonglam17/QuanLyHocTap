@@ -19,17 +19,29 @@ function assertE2EDatabase() {
   return databaseName;
 }
 
-function runDatabaseScript(scriptName) {
+function runDatabaseScript(scriptName, databaseName) {
+  const databaseUser = process.env.DB_USER || process.env.DB_ADMIN_USER || 'root';
+  const databasePassword =
+    process.env.DB_PASSWORD ?? process.env.DB_ADMIN_PASSWORD ?? '';
+  const allowEmptyE2EPassword =
+    databaseName === 'lms_e2e' &&
+    databaseUser === 'root' &&
+    databasePassword === '';
+  const preloadPath = path.join(e2eDirectory, 'scripts', 'mysql-e2e-preload.cjs');
   const result = spawnSync(
     process.execPath,
-    [path.join(repositoryRoot, 'database', scriptName)],
+    [
+      ...(allowEmptyE2EPassword ? ['--require', preloadPath] : []),
+      path.join(repositoryRoot, 'database', scriptName)
+    ],
     {
       cwd: repositoryRoot,
       env: {
         ...process.env,
-        DB_NAME: process.env.DB_NAME || 'lms_e2e',
-        DB_USER: process.env.DB_USER || process.env.DB_ADMIN_USER || 'root',
-        DB_PASSWORD: process.env.DB_PASSWORD ?? process.env.DB_ADMIN_PASSWORD ?? ''
+        DB_NAME: databaseName,
+        DB_USER: databaseUser,
+        DB_PASSWORD: databasePassword,
+        E2E_ALLOW_EMPTY_DB_PASSWORD: allowEmptyE2EPassword ? '1' : '0'
       },
       stdio: 'inherit'
     }
@@ -62,8 +74,8 @@ async function resetE2EDatabase() {
     await connection.end();
   }
 
-  runDatabaseScript('migrate.js');
-  runDatabaseScript('seed.js');
+  runDatabaseScript('migrate.js', databaseName);
+  runDatabaseScript('seed.js', databaseName);
 }
 
 export async function resetDatabase() {
@@ -73,7 +85,8 @@ export async function resetDatabase() {
 export async function runDatabaseAction(action) {
   assertE2EDatabase();
   if (action === 'reset') return resetE2EDatabase();
-  if (action === 'migrate') return runDatabaseScript('migrate.js');
-  if (action === 'seed') return runDatabaseScript('seed.js');
+  const databaseName = assertE2EDatabase();
+  if (action === 'migrate') return runDatabaseScript('migrate.js', databaseName);
+  if (action === 'seed') return runDatabaseScript('seed.js', databaseName);
   throw new Error('Usage: node scripts/database.js <reset|migrate|seed>');
 }
