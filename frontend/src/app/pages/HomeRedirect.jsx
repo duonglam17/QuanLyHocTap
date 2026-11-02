@@ -6,6 +6,7 @@ export function HomeRedirect({ routes }) {
   const { status, user } = useAuth();
   if (status === 'loading') return <LoadingState />;
   if (!user) return <Navigate to="/login" replace />;
+  if (user.mustChangePassword) return <Navigate to="/change-password" replace />;
 
   const accessibleRoutes = routes.filter(
     (route) => !route.public && (!route.roles.length || route.roles.includes(user.role))

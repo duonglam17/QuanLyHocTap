@@ -52,13 +52,15 @@ class AuthService {
   }
 
   _createTokenResponse(user, refreshToken) {
+    const mustChangePassword = Boolean(user.must_change_password);
     return {
       accessToken: this._createAccessToken(user),
       refreshToken,
+      mustChangePassword,
       user: {
         id: user.id,
         role: user.role,
-        must_change_password: Boolean(user.must_change_password)
+        must_change_password: mustChangePassword
       }
     };
   }

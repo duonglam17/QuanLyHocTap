@@ -3,11 +3,17 @@ import { api, clearSession, getAccessToken, getRefreshToken, getStoredUser, save
 import { AuthContext } from './authContext.js';
 
 function normalizeUser(user, previousUser, identifier) {
+  const mustChangePassword = Boolean(
+    user?.mustChangePassword ??
+      user?.must_change_password ??
+      previousUser?.mustChangePassword
+  );
   return {
     id: user.id,
     fullName: user.fullName ?? user.full_name ?? previousUser?.fullName ?? '',
     username: user.username ?? previousUser?.username ?? identifier ?? '',
-    role: user.role
+    role: user.role,
+    mustChangePassword
   };
 }
 
@@ -85,8 +91,15 @@ export function AuthProvider({ children }) {
       setUser(null);
       setStatus('anonymous');
     };
+    const handlePasswordChangeRequired = () => {
+      setUser((prev) => (prev ? { ...prev, mustChangePassword: true } : prev));
+    };
     window.addEventListener('lms:unauthorized', clearExpiredSession);
-    return () => window.removeEventListener('lms:unauthorized', clearExpiredSession);
+    window.addEventListener('lms:password_change_required', handlePasswordChangeRequired);
+    return () => {
+      window.removeEventListener('lms:unauthorized', clearExpiredSession);
+      window.removeEventListener('lms:password_change_required', handlePasswordChangeRequired);
+    };
   }, []);
 
   const value = useMemo(

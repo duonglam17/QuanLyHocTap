@@ -4,6 +4,7 @@ const logger = require('./logger');
 const errors = require('./errors');
 const errorHandler = require('./errorHandler');
 const requireAuth = require('./authMiddleware');
+const { requirePasswordChanged } = require('./authMiddleware');
 const requireRole = require('./rbacMiddleware');
 const rateLimit = require('./rateLimiter');
 const validate = require('./validate');
@@ -20,6 +21,7 @@ module.exports = {
   errors,
   errorHandler,
   requireAuth,
+  requirePasswordChanged,
   requireRole,
   rateLimit,
   validate,

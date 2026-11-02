@@ -36,8 +36,21 @@ class UnauthorizedError extends AppError {
 }
 
 class ForbiddenError extends AppError {
-  constructor(message = 'Bạn không có quyền thực hiện hành động này', details = null) {
-    super(message, 'FORBIDDEN', 403, details);
+  constructor(
+    message = 'Bạn không có quyền thực hiện hành động này',
+    details = null,
+    code = 'FORBIDDEN'
+  ) {
+    super(message, code, 403, details);
+  }
+}
+
+class PasswordChangeRequiredError extends ForbiddenError {
+  constructor(
+    message = 'Tài khoản cần đổi mật khẩu ở lần đăng nhập đầu tiên.',
+    details = null
+  ) {
+    super(message, details, 'PASSWORD_CHANGE_REQUIRED');
   }
 }
 
@@ -73,6 +86,7 @@ module.exports = {
   ForbiddenError,
   NotFoundError,
   ConflictError,
+  PasswordChangeRequiredError,
   TooManyRequestsError,
   InternalServerError
 };

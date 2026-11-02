@@ -60,6 +60,7 @@ class UserService {
       username: user.username,
       email: user.email,
       role: user.role,
+      mustChangePassword: Boolean(user.mustChangePassword),
       createdAt: user.createdAt
     };
   }

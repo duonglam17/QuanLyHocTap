@@ -374,6 +374,7 @@ test('GET /api/users/me returns profile for GIANG_VIEN and SINH_VIEN, 403 for AD
     assert.equal(teacherRes.body.username, 'gv_mai');
     assert.equal(teacherRes.body.email, 'mai.nguyen@lms.edu.vn');
     assert.equal(teacherRes.body.role, 'GIANG_VIEN');
+    assert.equal(teacherRes.body.mustChangePassword, false);
     assert.equal(teacherRes.body.createdAt, '2026-11-01T08:00:00.000Z');
     assert.equal(teacherRes.body.passwordHash, undefined);
     assert.equal(teacherRes.body.password, undefined);
@@ -395,6 +396,16 @@ test('GET /api/users/me returns profile for GIANG_VIEN and SINH_VIEN, 403 for AD
 
 test('PUT /api/users/me/password handles change password, weak password, duplicate, wrong old password, 403 admin, 401 unauth', async () => {
   const { state, service } = createUserHarness();
+  state.users.set(1, {
+    id: 1,
+    username: 'admin',
+    email: 'admin@lms.edu.vn',
+    fullName: 'Admin',
+    role: 'ADMIN',
+    status: 'ACTIVE',
+    tokenVersion: 1,
+    passwordHash: 'MatKhau@123'
+  });
   state.users.set(10, {
     id: 10,
     username: 'gv_mai',
@@ -428,13 +439,51 @@ test('PUT /api/users/me/password handles change password, weak password, duplica
     });
     assert.equal(unauth.status, 401);
 
-    // 2. Admin gọi -> 403
+    // 2. Admin gọi khi mustChangePassword = false -> 403
     const adminRes = await request(app)
       .put('/api/users/me/password')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ currentPassword: 'MatKhau@123', newPassword: 'NewPassword@456' });
     assert.equal(adminRes.status, 403);
     assert.equal(adminRes.body.message, 'Quản trị viên không có quyền xem trang này');
+
+    // 2b. Admin do admin khác tạo có mustChangePassword = true -> cho phép đổi mật khẩu
+    db.query = async (sql, parameters) => {
+      const id = parameters[0];
+      const user = state.users.get(id);
+      return [
+        [
+          {
+            status: user ? user.status : 'ACTIVE',
+            token_version: user ? user.tokenVersion : 1,
+            must_change_password: 1
+          }
+        ],
+        []
+      ];
+    };
+    const adminForcedRes = await request(app)
+      .put('/api/users/me/password')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ currentPassword: 'MatKhau@123', newPassword: 'AdminNewPass@456' });
+    assert.equal(adminForcedRes.status, 200);
+    assert.equal(adminForcedRes.body.message, 'Đổi mật khẩu thành công');
+
+    // Reset lại mock db.query về must_change_password = 0
+    db.query = async (sql, parameters) => {
+      const id = parameters[0];
+      const user = state.users.get(id);
+      return [
+        [
+          {
+            status: user ? user.status : 'ACTIVE',
+            token_version: user ? user.tokenVersion : 1,
+            must_change_password: 0
+          }
+        ],
+        []
+      ];
+    };
 
     // 3. Sai mật khẩu hiện tại -> 400
     const wrongCurrent = await request(app)

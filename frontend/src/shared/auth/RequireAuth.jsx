@@ -8,6 +8,11 @@ export function RequireAuth({ roles = [], children }) {
 
   if (status === 'loading') return <LoadingState />;
   if (!user) return <Navigate to="/login" replace state={{ from: location }} />;
+
+  if (user.mustChangePassword && location.pathname !== '/change-password') {
+    return <Navigate to="/change-password" replace />;
+  }
+
   if (roles.length && !roles.includes(user.role)) {
     return <Navigate to="/forbidden" replace />;
   }
