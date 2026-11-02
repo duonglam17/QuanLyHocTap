@@ -1,0 +1,5 @@
+services:
+  backend:
+    volumes:
+      - ./docs:/docs:ro
+

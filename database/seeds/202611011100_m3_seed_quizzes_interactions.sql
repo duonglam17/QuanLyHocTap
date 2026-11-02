@@ -24,21 +24,24 @@ INSERT INTO `options` (`id`, `question_id`, `content`, `is_correct`, `order_inde
 (1, 1, '401 Unauthorized', FALSE, 1),
 (2, 1, '403 Forbidden', TRUE, 2),
 (3, 1, '404 Not Found', FALSE, 3),
-(4, 1, '500 Internal Server Error', FALSE, 4);
+(4, 1, '500 Internal Server Error', FALSE, 4)
+ON DUPLICATE KEY UPDATE `content`=VALUES(`content`);
 
 -- Lựa chọn câu hỏi 2
 INSERT INTO `options` (`id`, `question_id`, `content`, `is_correct`, `order_index`) VALUES
 (5, 2, 'CASCADE', FALSE, 1),
 (6, 2, 'SET NULL', FALSE, 2),
 (7, 2, 'RESTRICT / NO ACTION', TRUE, 3),
-(8, 2, 'SET DEFAULT', FALSE, 4);
+(8, 2, 'SET DEFAULT', FALSE, 4)
+ON DUPLICATE KEY UPDATE `content`=VALUES(`content`);
 
 -- Lựa chọn câu hỏi 3
 INSERT INTO `options` (`id`, `question_id`, `content`, `is_correct`, `order_index`) VALUES
 (9, 3, 'Session Cookie thuần túy', FALSE, 1),
 (10, 3, 'JSON Web Token (JWT)', TRUE, 2),
 (11, 3, 'HTTP Basic Auth trên mỗi database lookup', FALSE, 3),
-(12, 3, 'Server-side Memory Cache', FALSE, 4);
+(12, 3, 'Server-side Memory Cache', FALSE, 4)
+ON DUPLICATE KEY UPDATE `content`=VALUES(`content`);
 
 -- 9. SEED ANNOUNCEMENTS & DISCUSSIONS
 INSERT INTO `announcements` (`id`, `course_id`, `author_id`, `title`, `content`, `created_at`) VALUES
