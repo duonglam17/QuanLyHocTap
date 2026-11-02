@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Lock, LogOut } from 'lucide-react';
+import { Eye, EyeOff, LogOut } from 'lucide-react';
 import { Button } from '@/shared/components/atoms/Button.jsx';
 import { Input } from '@/shared/components/atoms/Input.jsx';
 import { FormField } from '@/shared/components/molecules/FormField.jsx';
@@ -8,6 +8,7 @@ import { Spinner } from '@/shared/components/atoms/Spinner.jsx';
 import { toast } from '@/shared/components/molecules/Toast.jsx';
 import { useAuth } from '@/shared/auth/useAuth.js';
 import { LoadingState } from '@/shared/components/organisms/LoadingState.jsx';
+import { APP_NAME, LOGO_FULL_PATH } from '@/shared/lib/index.js';
 import { changeMyPassword } from '../api/users.js';
 
 const INITIAL_FORM = {
@@ -151,19 +152,23 @@ export function InitialChangePasswordPage() {
         aria-labelledby="change-password-title"
         className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-lg sm:p-8"
       >
-        <header className="mb-6 space-y-2 text-center sm:text-left">
-          <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary sm:mx-0">
-            <Lock className="size-6" />
+        <header className="mb-6 flex flex-col items-center gap-3 text-center sm:items-start sm:text-left">
+          <img
+            alt={APP_NAME}
+            className="h-24 w-auto object-contain"
+            src={LOGO_FULL_PATH}
+          />
+          <div className="space-y-1">
+            <h1
+              className="text-2xl font-bold tracking-tight text-foreground"
+              id="change-password-title"
+            >
+              Đổi mật khẩu lần đầu
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Đây là lần đăng nhập đầu tiên. Vui lòng đặt mật khẩu mới để tiếp tục.
+            </p>
           </div>
-          <h1
-            className="text-2xl font-bold tracking-tight text-foreground"
-            id="change-password-title"
-          >
-            Đổi mật khẩu lần đầu
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Đây là lần đăng nhập đầu tiên. Vui lòng đặt mật khẩu mới để tiếp tục.
-          </p>
         </header>
 
         <form className="space-y-4" onSubmit={handleSubmit}>

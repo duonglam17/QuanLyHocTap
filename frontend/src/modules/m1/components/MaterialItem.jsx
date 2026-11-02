@@ -13,7 +13,7 @@ function getFileIcon(name = '') {
       return <FileText aria-hidden="true" className="size-5 text-red-500" />;
     case 'doc':
     case 'docx':
-      return <FileText aria-hidden="true" className="size-5 text-blue-500" />;
+      return <FileText aria-hidden="true" className="size-5 text-primary" />;
     case 'ppt':
     case 'pptx':
       return <FileSpreadsheet aria-hidden="true" className="size-5 text-orange-500" />;
