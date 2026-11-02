@@ -9,7 +9,7 @@ import {
   Users,
   X
 } from 'lucide-react';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useNavigate, Navigate } from 'react-router-dom';
 import { Button } from '../../shared/components/atoms/Button.jsx';
 import { useAuth } from '../../shared/auth/useAuth.js';
 import { getHeaderWidgets } from '../../shared/lib/slots.js';
@@ -181,6 +181,10 @@ export function RoleLayout({ children, routes = [] }) {
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const widgets = useMemo(() => getHeaderWidgets(user?.role), [user?.role]);
+
+  if (user?.mustChangePassword) {
+    return <Navigate replace to="/change-password" />;
+  }
 
   async function handleLogout() {
     try {

@@ -12,12 +12,12 @@ function createUserRouter({ userController } = {}) {
   }
   const router = Router();
 
-  // GET /api/users/me: Chỉ dành cho GIANG_VIEN và SINH_VIEN
+  // GET /api/users/me: Chỉ dành cho GIANG_VIEN và SINH_VIEN (hoặc ADMIN khi cần đổi mật khẩu lần đầu)
   router.get(
     '/me',
     requireAuth,
     (req, _res, next) => {
-      if (req.user?.role === 'ADMIN') {
+      if (req.user?.role === 'ADMIN' && !req.user?.mustChangePassword) {
         throw new ForbiddenError('Quản trị viên không có quyền xem trang này');
       }
       next();
@@ -25,12 +25,13 @@ function createUserRouter({ userController } = {}) {
     userController.getMe.bind(userController)
   );
 
-  // PUT /api/users/me/password: Đổi mật khẩu cá nhân cho GIANG_VIEN và SINH_VIEN
+  // PUT /api/users/me/password: Đổi mật khẩu cá nhân cho GIANG_VIEN và SINH_VIEN,
+  // và cho phép MỌI vai trò (kể cả ADMIN) khi mustChangePassword = true
   router.put(
     '/me/password',
     requireAuth,
     (req, _res, next) => {
-      if (req.user?.role === 'ADMIN') {
+      if (req.user?.role === 'ADMIN' && !req.user?.mustChangePassword) {
         throw new ForbiddenError('Quản trị viên không có quyền xem trang này');
       }
       next();

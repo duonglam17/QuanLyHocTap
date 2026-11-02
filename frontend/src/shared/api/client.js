@@ -60,6 +60,16 @@ function emitUnauthorized() {
   }
 }
 
+function emitPasswordChangeRequired() {
+  if (typeof window !== 'undefined') {
+    const stored = getStoredUser();
+    if (stored && !stored.mustChangePassword) {
+      saveSession({ user: { ...stored, mustChangePassword: true } });
+    }
+    window.dispatchEvent(new CustomEvent('lms:password_change_required'));
+  }
+}
+
 function buildUrl(path, params) {
   const base = baseURL.replace(/\/+$/, '');
   const absoluteBase = /^https?:\/\//i.test(base);
@@ -97,6 +107,14 @@ async function toApiError(response) {
     payload = await parseResponse(response);
   } catch {
     payload = null;
+  }
+
+  if (
+    response.status === 403 &&
+    (payload?.code === 'PASSWORD_CHANGE_REQUIRED' ||
+      payload?.message?.includes('PASSWORD_CHANGE_REQUIRED'))
+  ) {
+    emitPasswordChangeRequired();
   }
 
   return new ApiError({
@@ -245,6 +263,13 @@ function uploadRequest(path, formData, options = {}, canRefresh = true) {
       }
 
       if (xhr.status < 200 || xhr.status >= 300) {
+        if (
+          xhr.status === 403 &&
+          (payload?.code === 'PASSWORD_CHANGE_REQUIRED' ||
+            payload?.message?.includes('PASSWORD_CHANGE_REQUIRED'))
+        ) {
+          emitPasswordChangeRequired();
+        }
         if (xhr.status === 401 && !authEndpoint(path)) {
           clearSession();
           emitUnauthorized();

@@ -50,4 +50,23 @@ describe('HomeRedirect', () => {
     renderHomeRedirect('ADMIN', [{ path: '/student-only', roles: ['SINH_VIEN'] }]);
     expect(screen.getByText('403 Forbidden')).toBeInTheDocument();
   });
+
+  it('redirects to /change-password when user has mustChangePassword = true', () => {
+    render(
+      <AuthContext.Provider
+        value={{
+          user: { role: 'SINH_VIEN', mustChangePassword: true },
+          status: 'authenticated'
+        }}
+      >
+        <MemoryRouter initialEntries={['/']}>
+          <Routes>
+            <Route element={<HomeRedirect routes={routes} />} path="/" />
+            <Route element={<p>Đổi mật khẩu lần đầu</p>} path="/change-password" />
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>
+    );
+    expect(screen.getByText('Đổi mật khẩu lần đầu')).toBeInTheDocument();
+  });
 });

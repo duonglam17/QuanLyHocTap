@@ -17,7 +17,7 @@ function getReturnPath(from) {
 }
 
 export function LoginPage() {
-  const { login, status } = useAuth();
+  const { login, status, user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
@@ -33,6 +33,9 @@ export function LoginPage() {
     );
   }
   if (status === 'authenticated') {
+    if (user?.mustChangePassword) {
+      return <Navigate replace to="/change-password" />;
+    }
     return <Navigate replace to={getReturnPath(location.state?.from)} />;
   }
 
@@ -41,8 +44,12 @@ export function LoginPage() {
     setError('');
     setSubmitting(true);
     try {
-      await login(username, password);
-      navigate(getReturnPath(location.state?.from), { replace: true });
+      const loggedInUser = await login(username, password);
+      if (loggedInUser?.mustChangePassword || loggedInUser?.must_change_password) {
+        navigate('/change-password', { replace: true });
+      } else {
+        navigate(getReturnPath(location.state?.from), { replace: true });
+      }
     } catch (loginError) {
       setError(loginError.message);
     } finally {

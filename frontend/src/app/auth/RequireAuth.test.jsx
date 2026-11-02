@@ -62,4 +62,35 @@ describe('RequireAuth', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent('403 Forbidden');
   });
+
+  it('redirects an authenticated user with mustChangePassword = true to /change-password', () => {
+    render(
+      <AuthContext.Provider
+        value={{
+          user: { role: 'SINH_VIEN', mustChangePassword: true },
+          status: 'authenticated'
+        }}
+      >
+        <MemoryRouter initialEntries={['/courses']}>
+          <Routes>
+            <Route
+              element={
+                <RequireAuth roles={['SINH_VIEN']}>
+                  <p>Trang khóa học</p>
+                </RequireAuth>
+              }
+              path="/courses"
+            />
+            <Route
+              element={<p>Đổi mật khẩu lần đầu</p>}
+              path="/change-password"
+            />
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>
+    );
+
+    expect(screen.getByText('Đổi mật khẩu lần đầu')).toBeInTheDocument();
+    expect(screen.queryByText('Trang khóa học')).not.toBeInTheDocument();
+  });
 });

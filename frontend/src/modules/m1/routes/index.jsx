@@ -5,11 +5,19 @@ import { AdminUsersPage } from '../pages/AdminUsersPage.jsx';
 import { LessonDetailPage } from '../pages/LessonDetailPage.jsx';
 import { MySchedulePage } from '../pages/MySchedulePage.jsx';
 import { ProfilePage } from '../pages/ProfilePage.jsx';
+import { InitialChangePasswordPage } from '../pages/InitialChangePasswordPage.jsx';
 
 export const routes = [
   {
     path: '/login',
     element: <LoginPage />,
+    roles: [],
+    public: true,
+    layout: 'bare'
+  },
+  {
+    path: '/change-password',
+    element: <InitialChangePasswordPage />,
     roles: [],
     public: true,
     layout: 'bare'

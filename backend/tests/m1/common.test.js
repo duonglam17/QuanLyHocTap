@@ -395,3 +395,86 @@ test('storage validates extension, size and magic bytes and streams/deletes UUID
     /không khớp/
   );
 });
+
+test('requirePasswordChanged middleware blocks normal endpoints with PASSWORD_CHANGE_REQUIRED but allows logout, me, and change password', async () => {
+  const { requirePasswordChanged } = require('../../src/common/authMiddleware');
+  assert.equal(typeof requirePasswordChanged, 'function');
+  const app = express();
+  app.use(express.json());
+
+  app.get('/api/courses', requireAuth, (req, res) => res.json({ success: true }));
+  app.post('/api/auth/logout', requireAuth, (req, res) => res.json({ loggedOut: true }));
+  app.get('/api/users/me', requireAuth, (req, res) => res.json({ id: req.user.id }));
+  app.put('/api/users/me/password', requireAuth, (req, res) => res.json({ changed: true }));
+  app.use(errorHandler);
+
+  const token = jwt.sign({ user_id: 99, role: 'SINH_VIEN', token_version: 1 }, config.JWT_SECRET);
+
+  const originalQuery = db.query;
+  try {
+    // 1. User has must_change_password = true
+    db.query = async () => {
+      return [
+        [
+          {
+            status: 'ACTIVE',
+            token_version: 1,
+            must_change_password: 1
+          }
+        ],
+        []
+      ];
+    };
+
+    // Calling regular API returns 403 with code PASSWORD_CHANGE_REQUIRED
+    const resBlocked = await request(app)
+      .get('/api/courses')
+      .set('Authorization', `Bearer ${token}`);
+    assert.equal(resBlocked.status, 403);
+    assert.equal(resBlocked.body.code, 'PASSWORD_CHANGE_REQUIRED');
+
+    // Calling logout is allowed
+    const resLogout = await request(app)
+      .post('/api/auth/logout')
+      .set('Authorization', `Bearer ${token}`);
+    assert.equal(resLogout.status, 200);
+    assert.equal(resLogout.body.loggedOut, true);
+
+    // Calling get me is allowed
+    const resMe = await request(app)
+      .get('/api/users/me')
+      .set('Authorization', `Bearer ${token}`);
+    assert.equal(resMe.status, 200);
+    assert.equal(resMe.body.id, 99);
+
+    // Calling change password is allowed
+    const resPass = await request(app)
+      .put('/api/users/me/password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({});
+    assert.equal(resPass.status, 200);
+    assert.equal(resPass.body.changed, true);
+
+    // 2. User has must_change_password = false
+    db.query = async () => {
+      return [
+        [
+          {
+            status: 'ACTIVE',
+            token_version: 1,
+            must_change_password: 0
+          }
+        ],
+        []
+      ];
+    };
+
+    const resAllowed = await request(app)
+      .get('/api/courses')
+      .set('Authorization', `Bearer ${token}`);
+    assert.equal(resAllowed.status, 200);
+    assert.equal(resAllowed.body.success, true);
+  } finally {
+    db.query = originalQuery;
+  }
+});
