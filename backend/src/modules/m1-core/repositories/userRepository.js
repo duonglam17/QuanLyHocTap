@@ -23,6 +23,10 @@ class UserRepository {
     this.transactionRunner = transactionRunner;
   }
 
+  async findById(userId) {
+    return this._findUser(userId);
+  }
+
   async _findUser(userId, connection = this.db) {
     const [rows] = await connection.query(
       `SELECT ${userColumns}

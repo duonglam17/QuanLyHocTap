@@ -1,6 +1,13 @@
 import { api } from '@/shared/api';
 
 /**
+ * Lấy thông tin tài khoản cá nhân hiện tại (chỉ dành cho GIANG_VIEN và SINH_VIEN)
+ */
+export async function getMe() {
+  return api.get('/users/me');
+}
+
+/**
  * US-02: Lấy danh sách người dùng có phân trang và bộ lọc (Admin)
  * @param {object} [params] - { search, role, status, page, limit }
  */

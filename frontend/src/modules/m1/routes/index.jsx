@@ -4,6 +4,7 @@ import { CourseDetailPage } from '../pages/CourseDetailPage.jsx';
 import { AdminUsersPage } from '../pages/AdminUsersPage.jsx';
 import { LessonDetailPage } from '../pages/LessonDetailPage.jsx';
 import { MySchedulePage } from '../pages/MySchedulePage.jsx';
+import { ProfilePage } from '../pages/ProfilePage.jsx';
 
 export const routes = [
   {
@@ -53,6 +54,13 @@ export const routes = [
       order: 15,
       group: 'main'
     }
+  },
+  {
+    path: '/profile',
+    element: <ProfilePage />,
+    roles: ['ADMIN', 'GIANG_VIEN', 'SINH_VIEN'],
+    layout: 'default',
+    public: false
   },
   {
     path: '/admin/users',

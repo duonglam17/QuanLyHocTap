@@ -29,6 +29,9 @@ function createUserHarness() {
       state.listArgs = args;
       return { items: [], total: 0, page: args.page, limit: args.limit };
     },
+    async findById(userId) {
+      return state.users.get(userId) || null;
+    },
     async create(user) {
       if (state.duplicate) {
         const error = new Error('Duplicate user');
@@ -290,6 +293,88 @@ test('US-02 user API requires Admin role and validates the create request', asyn
     assert.equal(created.status, 201);
     assert.equal(created.body.initialPassword, 'A1InitialPassword');
     assert.equal(created.body.user.status, 'ACTIVE');
+  } finally {
+    db.query = originalQuery;
+  }
+});
+
+test('GET /api/users/me returns profile for GIANG_VIEN and SINH_VIEN, 403 for ADMIN, 401 unauthenticated', async () => {
+  const { state, service } = createUserHarness();
+  state.users.set(10, {
+    id: 10,
+    username: 'gv_mai',
+    email: 'mai.nguyen@lms.edu.vn',
+    fullName: 'Cô Nguyễn Thị Mai',
+    role: 'GIANG_VIEN',
+    status: 'ACTIVE',
+    createdAt: '2026-11-01T08:00:00.000Z',
+    passwordHash: 'secret_hash'
+  });
+  state.users.set(20, {
+    id: 20,
+    username: 'sv_nam',
+    email: 'nam.tran@lms.edu.vn',
+    fullName: 'Trần Văn Nam',
+    role: 'SINH_VIEN',
+    status: 'ACTIVE',
+    createdAt: '2026-11-01T09:00:00.000Z',
+    passwordHash: 'secret_hash'
+  });
+
+  const app = express();
+  app.use(express.json());
+  app.use('/api/users', createUserRouter({ userController: new UserController(service) }));
+  app.use(errorHandler);
+
+  const originalQuery = db.query;
+  db.query = async () => [[{ status: 'ACTIVE', token_version: 1 }], []];
+
+  const adminToken = jwt.sign({ user_id: 1, role: 'ADMIN', token_version: 1 }, config.JWT_SECRET);
+  const teacherToken = jwt.sign(
+    { user_id: 10, role: 'GIANG_VIEN', token_version: 1 },
+    config.JWT_SECRET
+  );
+  const studentToken = jwt.sign(
+    { user_id: 20, role: 'SINH_VIEN', token_version: 1 },
+    config.JWT_SECRET
+  );
+
+  try {
+    // 1. Chưa đăng nhập -> 401
+    const unauthRes = await request(app).get('/api/users/me');
+    assert.equal(unauthRes.status, 401);
+
+    // 2. Admin gọi -> 403 kèm thông báo
+    const adminRes = await request(app)
+      .get('/api/users/me')
+      .set('Authorization', `Bearer ${adminToken}`);
+    assert.equal(adminRes.status, 403);
+    assert.equal(adminRes.body.message, 'Quản trị viên không có quyền xem trang này');
+
+    // 3. Giảng viên gọi -> 200, trả đúng 6 trường, không lộ password/hash
+    const teacherRes = await request(app)
+      .get('/api/users/me')
+      .set('Authorization', `Bearer ${teacherToken}`);
+    assert.equal(teacherRes.status, 200);
+    assert.equal(teacherRes.body.id, 10);
+    assert.equal(teacherRes.body.fullName, 'Cô Nguyễn Thị Mai');
+    assert.equal(teacherRes.body.username, 'gv_mai');
+    assert.equal(teacherRes.body.email, 'mai.nguyen@lms.edu.vn');
+    assert.equal(teacherRes.body.role, 'GIANG_VIEN');
+    assert.equal(teacherRes.body.createdAt, '2026-11-01T08:00:00.000Z');
+    assert.equal(teacherRes.body.passwordHash, undefined);
+    assert.equal(teacherRes.body.password, undefined);
+
+    // 4. Sinh viên gọi -> 200
+    const studentRes = await request(app)
+      .get('/api/users/me')
+      .set('Authorization', `Bearer ${studentToken}`);
+    assert.equal(studentRes.status, 200);
+    assert.equal(studentRes.body.id, 20);
+    assert.equal(studentRes.body.fullName, 'Trần Văn Nam');
+    assert.equal(studentRes.body.username, 'sv_nam');
+    assert.equal(studentRes.body.role, 'SINH_VIEN');
+    assert.equal(studentRes.body.passwordHash, undefined);
   } finally {
     db.query = originalQuery;
   }

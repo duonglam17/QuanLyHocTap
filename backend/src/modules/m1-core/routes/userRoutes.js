@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const { z } = require('zod');
-const { requireAuth, requireRole, validate } = require('../../../common');
+const { requireAuth, requireRole, validate, ForbiddenError } = require('../../../common');
 
 const roleSchema = z.enum(['ADMIN', 'GIANG_VIEN', 'SINH_VIEN']);
 const statusSchema = z.enum(['ACTIVE', 'LOCKED']);
@@ -11,6 +11,21 @@ function createUserRouter({ userController } = {}) {
     throw new TypeError('createUserRouter yêu cầu UserController.');
   }
   const router = Router();
+
+  // GET /api/users/me: Chỉ dành cho GIANG_VIEN và SINH_VIEN
+  router.get(
+    '/me',
+    requireAuth,
+    (req, _res, next) => {
+      if (req.user?.role === 'ADMIN') {
+        throw new ForbiddenError('Quản trị viên không có quyền xem trang này');
+      }
+      next();
+    },
+    userController.getMe.bind(userController)
+  );
+
+  // Mọi route quản trị người dùng bên dưới bắt buộc quyền ADMIN
   router.use(requireAuth, requireRole('ADMIN'));
 
   const listSchema = z.object({

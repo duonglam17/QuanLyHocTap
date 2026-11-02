@@ -14,6 +14,7 @@ import { Button } from '../../shared/components/atoms/Button.jsx';
 import { useAuth } from '../../shared/auth/useAuth.js';
 import { getHeaderWidgets } from '../../shared/lib/slots.js';
 import { toast } from '../../shared/components/molecules/Toast.jsx';
+import { ProfileDialog } from '../../modules/m1/components/ProfileDialog.jsx';
 
 const roleLabels = {
   ADMIN: 'Quản trị viên',
@@ -101,8 +102,18 @@ function Sidebar({ routes, role, open, onNavigate }) {
   );
 }
 
-function Topbar({ user, role, widgets, onLogout, onToggleNavigation, navigationOpen }) {
+function Topbar({
+  user,
+  role,
+  widgets,
+  onLogout,
+  onToggleNavigation,
+  navigationOpen,
+  onOpenProfile
+}) {
   const displayName = user?.fullName || user?.username || 'Người dùng';
+  const canViewProfile = role === 'GIANG_VIEN' || role === 'SINH_VIEN';
+
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-card">
       <div className="flex min-h-16 items-center justify-between gap-3 px-4 sm:px-6">
@@ -129,10 +140,25 @@ function Topbar({ user, role, widgets, onLogout, onToggleNavigation, navigationO
               </div>
             ))}
           </div>
-          <div className="hidden min-w-0 text-right sm:block">
-            <p className="truncate text-sm font-medium">{displayName}</p>
-            <p className="text-xs text-muted-foreground">{roleLabels[role] ?? role}</p>
-          </div>
+
+          {canViewProfile ? (
+            <button
+              aria-label="Xem thông tin tài khoản"
+              className="hidden min-w-0 cursor-pointer rounded-md p-1.5 text-right transition-colors hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:block"
+              onClick={onOpenProfile}
+              title="Xem thông tin tài khoản"
+              type="button"
+            >
+              <p className="truncate text-sm font-medium">{user?.email || displayName}</p>
+              <p className="text-xs text-muted-foreground">{roleLabels[role] ?? role}</p>
+            </button>
+          ) : (
+            <div className="hidden min-w-0 text-right sm:block">
+              <p className="truncate text-sm font-medium">{displayName}</p>
+              <p className="text-xs text-muted-foreground">{roleLabels[role] ?? role}</p>
+            </div>
+          )}
+
           <Button onClick={onLogout} size="sm" variant="outline">
             Đăng xuất
           </Button>
@@ -153,6 +179,7 @@ export function RoleLayout({ children, routes = [] }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [navigationOpen, setNavigationOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const widgets = useMemo(() => getHeaderWidgets(user?.role), [user?.role]);
 
   async function handleLogout() {
@@ -169,6 +196,7 @@ export function RoleLayout({ children, routes = [] }) {
       <Topbar
         navigationOpen={navigationOpen}
         onLogout={handleLogout}
+        onOpenProfile={() => setProfileOpen(true)}
         onToggleNavigation={() => setNavigationOpen((current) => !current)}
         role={user?.role}
         user={user}
@@ -187,6 +215,8 @@ export function RoleLayout({ children, routes = [] }) {
           </div>
         </main>
       </div>
+
+      <ProfileDialog onOpenChange={setProfileOpen} open={profileOpen} />
     </div>
   );
 }
