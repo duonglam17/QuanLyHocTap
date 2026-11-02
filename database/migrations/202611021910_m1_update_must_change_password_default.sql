@@ -9,3 +9,4 @@ SET time_zone = '+07:00';
 
 ALTER TABLE `users`
   MODIFY COLUMN `must_change_password` BOOLEAN NOT NULL DEFAULT FALSE;
+

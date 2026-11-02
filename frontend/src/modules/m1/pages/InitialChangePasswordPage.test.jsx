@@ -215,3 +215,4 @@ describe('InitialChangePasswordPage (/change-password)', () => {
     });
   });
 });
+

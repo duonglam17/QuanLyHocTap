@@ -308,3 +308,4 @@ export function InitialChangePasswordPage() {
     </main>
   );
 }
+
