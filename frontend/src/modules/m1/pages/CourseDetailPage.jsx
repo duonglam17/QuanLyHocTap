@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import {
   Archive,
   ArrowLeft,
@@ -53,6 +53,8 @@ export function CourseDetailPage() {
   const { user } = useAuth();
   const [openEdit, setOpenEdit] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlTab = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState('');
 
   const query = useApiQuery(['course', courseId], () => getCourse(courseId));
@@ -67,8 +69,25 @@ export function CourseDetailPage() {
     return getCourseTabs(user?.role);
   }, [user?.role]);
 
-  // Đặt tab mặc định là tab đầu tiên nếu chưa chọn
-  const currentTab = activeTab || tabs[0]?.id || '';
+  // Đặt tab theo query param ?tab= nếu hợp lệ, hoặc theo state, hoặc tab đầu tiên
+  const currentTab = useMemo(() => {
+    if (urlTab && tabs.some((t) => t.id === urlTab)) {
+      return urlTab;
+    }
+    if (activeTab && tabs.some((t) => t.id === activeTab)) {
+      return activeTab;
+    }
+    return tabs[0]?.id || '';
+  }, [urlTab, activeTab, tabs]);
+
+  function handleTabChange(nextTab) {
+    setActiveTab(nextTab);
+    setSearchParams((prev) => {
+      const updated = new URLSearchParams(prev);
+      updated.set('tab', nextTab);
+      return updated;
+    }, { replace: true });
+  }
 
   async function handleCopyKey() {
     if (!course?.enrollment_key) return;
@@ -267,7 +286,7 @@ export function CourseDetailPage() {
 
       {/* Tabs Slot khu vực: nạp động qua getCourseTabs */}
       {tabs.length > 0 ? (
-        <Tabs onValueChange={setActiveTab} value={currentTab}>
+        <Tabs onValueChange={handleTabChange} value={currentTab}>
           <TabsList className="mb-4">
             {tabs.map((tab) => (
               <TabsTrigger key={tab.id} value={tab.id}>

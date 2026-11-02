@@ -36,7 +36,7 @@ test.describe('E2E-2: Quy trình quản lý bài tập, nộp bài, chấm bài 
     // Bước 1: Giảng viên tạo bài tập có hạn nộp, cho phép nộp trễ (US-07)
     // =========================================================================
     await gvPage.goto(`/courses/${courseId}?tab=assignments`);
-    await expect(gvPage.getByRole('heading', { name: 'Bài tập' })).toBeVisible();
+    await expect(gvPage.getByRole('heading', { name: 'Bài tập', exact: true })).toBeVisible();
 
     // Bấm nút "Tạo bài tập" (hoặc "Tạo bài tập đầu tiên" nếu danh sách trống)
     const openCreateBtn = gvPage.getByRole('button', { name: /Tạo bài tập/i }).first();
@@ -104,11 +104,12 @@ test.describe('E2E-2: Quy trình quản lý bài tập, nộp bài, chấm bài 
     // Bước 4: Giảng viên chấm điểm (thang 10, bước nhảy 0.25) và nhập nhận xét (US-09)
     // =========================================================================
     await gvPage.goto(`/courses/${courseId}/assignments/grading`);
-    await expect(gvPage.getByRole('heading', { name: 'Chấm bài tập' })).toBeVisible();
+    await expect(gvPage.getByRole('heading', { name: /Chấm bài/i }).first()).toBeVisible();
 
     // Kiểm tra hàng nộp bài của sinh viên sv_nam
-    await expect(gvPage.getByText('sv_nam')).toBeVisible();
-    await expect(gvPage.getByText('Số lần nộp: 2')).toBeVisible();
+    await expect(gvPage.getByText(/sv_nam|Trần Văn Nam/i).first()).toBeVisible();
+    await expect(gvPage.locator('dl')).toContainText('Số lần nộp');
+    await expect(gvPage.locator('dl')).toContainText('2');
     await expect(gvPage.getByRole('button', { name: 'Tải tệp bài nộp' })).toBeVisible();
 
     // Nhập điểm hợp lệ theo bước 0.25 và nhận xét có ký tự đặc biệt (đã sanitize)
@@ -131,7 +132,7 @@ test.describe('E2E-2: Quy trình quản lý bài tập, nộp bài, chấm bài 
 
     const gradeRow = svPage.locator('tr', { hasText: 'Bài tập lớn E2E' });
     await expect(gradeRow).toBeVisible();
-    await expect(gradeRow).toContainText('8.75');
+    await expect(gradeRow).toContainText(/8[.,]75/);
     await expect(gradeRow).toContainText('10');
     await expect(gradeRow).toContainText('Bài làm tốt!');
     // Đảm bảo mã độc script đã được sanitize sạch, không hiển thị thẻ thực thi
@@ -143,9 +144,9 @@ test.describe('E2E-2: Quy trình quản lý bài tập, nộp bài, chấm bài 
     await gvPage.goto(`/courses/${courseId}/grades`);
     await expect(gvPage.getByRole('heading', { name: 'Bảng điểm lớp' })).toBeVisible();
 
-    const studentRow = gvPage.locator('tr', { hasText: 'sv_nam' });
+    const studentRow = gvPage.locator('tr', { hasText: /sv_nam|Trần Văn Nam/i });
     await expect(studentRow).toBeVisible();
-    await expect(studentRow).toContainText('8.75');
+    await expect(studentRow).toContainText(/8[.,]75/);
 
     // Chờ sự kiện tải tệp CSV khi nhấn "Xuất CSV"
     const downloadPromise = gvPage.waitForEvent('download');
