@@ -4,7 +4,7 @@ import { Button } from '../../shared/components/atoms/Button.jsx';
 import { FormField } from '../../shared/components/molecules/FormField.jsx';
 import { Input } from '../../shared/components/atoms/Input.jsx';
 import { useAuth } from '../../shared/auth/useAuth.js';
-import { getSafeRedirectPath } from '../../shared/lib/index.js';
+import { getSafeRedirectPath, APP_NAME } from '../../shared/lib/index.js';
 
 function getReturnPath(from) {
   const path = typeof from === 'string'
@@ -61,7 +61,7 @@ export function LoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-muted/50 px-4 py-8">
       <section className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-sm sm:p-8">
         <header className="mb-6 grid gap-2">
-          <h1 className="text-2xl font-semibold">Đăng nhập LMS Mini</h1>
+          <h1 className="text-2xl font-semibold">Đăng nhập {APP_NAME}</h1>
           <p className="text-sm text-muted-foreground">Sử dụng tài khoản được cấp để tiếp tục.</p>
         </header>
         <form className="grid gap-4" onSubmit={handleSubmit}>

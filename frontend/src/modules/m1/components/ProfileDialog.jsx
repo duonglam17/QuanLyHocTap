@@ -13,6 +13,7 @@ import { Button } from '@/shared/components/atoms/Button.jsx';
 import { Badge } from '@/shared/components/atoms/Badge.jsx';
 import { Skeleton } from '@/shared/components/atoms/Skeleton.jsx';
 import { formatDateTime } from '@/shared/lib/formatters.js';
+import { APP_NAME } from '@/shared/lib/index.js';
 import { useAuth } from '@/shared/auth/useAuth.js';
 import { getMe } from '../api/users.js';
 import { ChangePasswordDialog } from './ChangePasswordDialog.jsx';
@@ -77,7 +78,7 @@ export function ProfileDialog({ open, onOpenChange }) {
             Thông tin tài khoản
           </DialogTitle>
           <DialogDescription>
-            Chi tiết hồ sơ và quyền hạn cá nhân của bạn trong hệ thống LMS Mini.
+            Chi tiết hồ sơ và quyền hạn cá nhân của bạn trong hệ thống {APP_NAME}.
           </DialogDescription>
         </DialogHeader>
 

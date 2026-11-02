@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: LMS Mini Common API
+  title: LAL Edu Common API
   version: 1.0.0
   description: Shared health endpoint, authentication scheme, and error format.
 servers:
