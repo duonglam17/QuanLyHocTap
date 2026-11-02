@@ -3,16 +3,25 @@
 @tailwind utilities;
 
 :root {
+  /* Brand design tokens (hex) */
+  --color-primary: #1B3A63;
+  --color-primary-hover: #14304F;
+  --color-primary-soft: #E8EEF6;
+  --color-accent: #F47B20;
+  --color-accent-hover: #D9650F;
+  --color-accent-soft: #FFF1E6;
+
+  /* HSL theme tokens */
   --background: 0 0% 100%;
   --foreground: 222 47% 11%;
   --card: 0 0% 100%;
   --card-foreground: 222 47% 11%;
-  --primary: 221 83% 53%;
-  --primary-foreground: 210 40% 98%;
-  --secondary: 210 40% 96%;
-  --secondary-foreground: 222 47% 11%;
+  --primary: 214 57% 25%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 214 43% 94%;
+  --secondary-foreground: 214 57% 25%;
   --destructive: 0 72% 51%;
-  --destructive-foreground: 210 40% 98%;
+  --destructive-foreground: 0 0% 100%;
   --muted: 210 40% 96%;
   --muted-foreground: 215 16% 47%;
   --success: 142 71% 35%;
@@ -21,9 +30,9 @@
   --warning-foreground: 222 47% 11%;
   --border: 214 32% 91%;
   --input: 214 32% 91%;
-  --ring: 221 83% 53%;
-  --accent: 210 40% 96%;
-  --accent-foreground: 222 47% 11%;
+  --ring: 214 57% 25%;
+  --accent: 26 91% 54%;
+  --accent-foreground: 0 0% 100%;
   --popover: 0 0% 100%;
   --popover-foreground: 222 47% 11%;
   --radius: 0.5rem;

@@ -14,7 +14,7 @@ import { Button } from '../../shared/components/atoms/Button.jsx';
 import { useAuth } from '../../shared/auth/useAuth.js';
 import { getHeaderWidgets } from '../../shared/lib/slots.js';
 import { toast } from '../../shared/components/molecules/Toast.jsx';
-import { APP_NAME } from '../../shared/lib/constants.js';
+import { APP_NAME, APP_NAME_PREFIX, APP_NAME_SUFFIX, LOGO_ICON_PATH } from '../../shared/lib/constants.js';
 import { ProfileDialog } from '../../modules/m1/components/ProfileDialog.jsx';
 
 const roleLabels = {
@@ -129,8 +129,17 @@ function Topbar({
           >
             {navigationOpen ? <X className="size-5" /> : <Menu className="size-5" />}
           </Button>
-          <Link className="shrink-0 font-semibold text-primary" to="/">
-            {APP_NAME}
+          <Link className="flex shrink-0 items-center gap-2.5 font-bold" to="/">
+            <img
+              alt={APP_NAME}
+              className="h-9 w-auto object-contain"
+              src={LOGO_ICON_PATH}
+            />
+            <span className="text-lg font-bold tracking-tight">
+              <span className="text-primary">{APP_NAME_PREFIX}</span>
+              {' '}
+              <span className="text-accent">{APP_NAME_SUFFIX}</span>
+            </span>
           </Link>
         </div>
         <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-4">
