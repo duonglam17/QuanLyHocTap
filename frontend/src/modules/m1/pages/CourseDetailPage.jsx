@@ -53,9 +53,9 @@ export function CourseDetailPage() {
   const { user } = useAuth();
   const [openEdit, setOpenEdit] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const urlTab = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState('');
+  const [activeTab, setActiveTab] = useState(urlTab || '');
 
   const query = useApiQuery(['course', courseId], () => getCourse(courseId));
   const course = query.data?.course;
@@ -69,24 +69,19 @@ export function CourseDetailPage() {
     return getCourseTabs(user?.role);
   }, [user?.role]);
 
-  // Đặt tab theo query param ?tab= nếu hợp lệ, hoặc theo state, hoặc tab đầu tiên
+  // Đặt tab theo state, hoặc theo query param ?tab= nếu có, hoặc tab đầu tiên
   const currentTab = useMemo(() => {
-    if (urlTab && tabs.some((t) => t.id === urlTab)) {
-      return urlTab;
-    }
     if (activeTab && tabs.some((t) => t.id === activeTab)) {
       return activeTab;
+    }
+    if (urlTab && tabs.some((t) => t.id === urlTab)) {
+      return urlTab;
     }
     return tabs[0]?.id || '';
   }, [urlTab, activeTab, tabs]);
 
   function handleTabChange(nextTab) {
     setActiveTab(nextTab);
-    setSearchParams((prev) => {
-      const updated = new URLSearchParams(prev);
-      updated.set('tab', nextTab);
-      return updated;
-    }, { replace: true });
   }
 
   async function handleCopyKey() {

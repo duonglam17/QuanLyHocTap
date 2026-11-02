@@ -169,7 +169,7 @@ test('M1 DB: MySQL integration suite for Module M1 Repositories and Constraints'
       `SELECT \`id\` FROM \`tmp_schedules\`
        WHERE \`course_id\` = ? AND \`date\` = ? AND \`status\` != 'CANCELLED'
          AND \`start_time\` < ? AND \`end_time\` > ?`,
-      [1, '2026-11-10', '09:00:00', '11:00:00']
+      [1, '2026-11-10', '11:00:00', '09:00:00']
     );
     assert.equal(conflictRows.length, 1);
   } finally {
