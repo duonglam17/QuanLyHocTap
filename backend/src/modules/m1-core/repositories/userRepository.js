@@ -27,6 +27,53 @@ class UserRepository {
     return this._findUser(userId);
   }
 
+  async findUserWithPassword(userId) {
+    const [rows] = await this.db.query(
+      `SELECT u.id, u.password_hash AS passwordHash, u.status, u.token_version AS tokenVersion, r.name AS role
+       FROM users u
+       JOIN roles r ON r.id = u.role_id
+       WHERE u.id = ? AND u.deleted_at IS NULL
+       LIMIT 1`,
+      [userId]
+    );
+    if (!rows[0]) return null;
+    return {
+      id: Number(rows[0].id),
+      passwordHash: rows[0].passwordHash,
+      status: rows[0].status,
+      tokenVersion: Number(rows[0].tokenVersion),
+      role: rows[0].role
+    };
+  }
+
+  async updatePassword(userId, passwordHash) {
+    return this.transactionRunner(async (connection) => {
+      const [rows] = await connection.query(
+        `SELECT id
+         FROM users
+         WHERE id = ? AND deleted_at IS NULL
+         FOR UPDATE`,
+        [userId]
+      );
+      if (!rows[0]) {
+        return false;
+      }
+      await connection.query(
+        `UPDATE users
+         SET password_hash = ?,
+             must_change_password = FALSE,
+             token_version = token_version + 1,
+             failed_login_attempts = 0,
+             failed_login_window_started_at = NULL,
+             lockout_until = NULL
+         WHERE id = ? AND deleted_at IS NULL`,
+        [passwordHash, userId]
+      );
+      await connection.query('DELETE FROM refresh_tokens WHERE user_id = ?', [userId]);
+      return true;
+    }, this.db.getPool());
+  }
+
   async _findUser(userId, connection = this.db) {
     const [rows] = await connection.query(
       `SELECT ${userColumns}

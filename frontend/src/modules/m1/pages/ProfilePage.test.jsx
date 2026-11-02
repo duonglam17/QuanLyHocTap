@@ -51,6 +51,7 @@ describe('ProfilePage (/profile)', () => {
     expect(screen.getByText('@sv_nam')).toBeInTheDocument();
     expect(screen.getByText('nam.tran@lms.edu.vn')).toBeInTheDocument();
     expect(screen.getAllByText('Sinh viên').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole('button', { name: /Đổi mật khẩu/i })).toBeInTheDocument();
   });
 });
 

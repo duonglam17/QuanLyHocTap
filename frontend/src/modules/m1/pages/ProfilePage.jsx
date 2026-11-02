@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { Calendar, Mail, Shield, User, UserCheck } from 'lucide-react';
+import { Calendar, Lock, Mail, Shield, User, UserCheck } from 'lucide-react';
 import { Button } from '@/shared/components/atoms/Button.jsx';
 import { Badge } from '@/shared/components/atoms/Badge.jsx';
 import { Skeleton } from '@/shared/components/atoms/Skeleton.jsx';
 import { formatDateTime } from '@/shared/lib/formatters.js';
 import { useAuth } from '@/shared/auth/useAuth.js';
 import { getMe } from '../api/users.js';
+import { ChangePasswordDialog } from '../components/ChangePasswordDialog.jsx';
 
 const roleLabels = {
   ADMIN: 'Quản trị viên',
@@ -20,6 +21,7 @@ export function ProfilePage() {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -64,14 +66,26 @@ export function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-          <User className="size-6 text-primary" />
-          Thông tin tài khoản
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Quản lý và xem chi tiết hồ sơ cá nhân của bạn trong hệ thống LMS Mini.
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <User className="size-6 text-primary" />
+            Thông tin tài khoản
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Quản lý và xem chi tiết hồ sơ cá nhân của bạn trong hệ thống LMS Mini.
+          </p>
+        </div>
+        {profile && profile.role !== 'ADMIN' ? (
+          <Button
+            className="flex items-center gap-2 self-start sm:self-auto"
+            onClick={() => setChangePasswordOpen(true)}
+            variant="outline"
+          >
+            <Lock className="size-4" />
+            Đổi mật khẩu
+          </Button>
+        ) : null}
       </div>
 
       <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
@@ -167,6 +181,11 @@ export function ProfilePage() {
           </div>
         ) : null}
       </div>
+
+      <ChangePasswordDialog
+        onOpenChange={setChangePasswordOpen}
+        open={changePasswordOpen}
+      />
     </div>
   );
 }

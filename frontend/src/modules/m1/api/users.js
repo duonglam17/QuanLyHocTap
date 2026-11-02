@@ -8,6 +8,14 @@ export async function getMe() {
 }
 
 /**
+ * Đổi mật khẩu cá nhân hiện tại (chỉ dành cho GIANG_VIEN và SINH_VIEN)
+ * @param {object} data - { currentPassword, newPassword }
+ */
+export async function changeMyPassword(data) {
+  return api.put('/users/me/password', data);
+}
+
+/**
  * US-02: Lấy danh sách người dùng có phân trang và bộ lọc (Admin)
  * @param {object} [params] - { search, role, status, page, limit }
  */
