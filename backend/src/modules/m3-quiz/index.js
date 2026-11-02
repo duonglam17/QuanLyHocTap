@@ -186,7 +186,9 @@ function init(ctx) {
     if (globalContracts && typeof globalContracts.registerPort === 'function') {
       globalContracts.registerPort('quizResults', quizResultsPort);
     }
-  } catch {}
+  } catch (error) {
+    ctx.logger?.debug?.('quizResults already registered in global registry', error);
+  }
 
   const announcementRepository = createAnnouncementRepository(ctx.db);
   announcementService = createAnnouncementService({

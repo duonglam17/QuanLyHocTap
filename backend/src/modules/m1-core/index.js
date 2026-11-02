@@ -86,8 +86,8 @@ module.exports = {
     ctx.contracts.registerPort('courseAccess', port);
     try {
       globalContracts.registerPort('courseAccess', port);
-    } catch {
-      // bỏ qua nếu đã đăng ký trên registry toàn cục
+    } catch (error) {
+      ctx.logger?.debug?.('courseAccess already registered in global registry', error);
     }
     lessonService.startCleanupJob();
   }

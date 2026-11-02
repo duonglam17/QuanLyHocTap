@@ -15,7 +15,7 @@ test('T4 M1 Coverage: CourseService comprehensive branch coverage', async () => 
     async findById(id) {
       return courses.get(Number(id)) || null;
     },
-    async findForUser(userId, role) {
+    async findForUser(_userId, _role) {
       return [...courses.values()];
     },
     async isEnrolled(userId, courseId) {
@@ -207,10 +207,10 @@ test('T4 M1 Coverage: LessonService comprehensive branch coverage', async () => 
       if (Number(courseId) === 999) return null;
       return { id: Number(courseId), status: Number(courseId) === 50 ? 'ARCHIVED' : 'PUBLISHED' };
     },
-    async isOwner(userId, courseId) {
+    async isOwner(userId, _courseId) {
       return Number(userId) === 2;
     },
-    async isEnrolled(userId, courseId) {
+    async isEnrolled(userId, _courseId) {
       return Number(userId) === 5;
     },
     async getLessonSummary(lessonId) {
@@ -307,10 +307,10 @@ test('T4 M1 Coverage: ScheduleService and UserService branch coverage', async ()
       if (Number(courseId) === 999) return null;
       return { id: Number(courseId), status: Number(courseId) === 88 ? 'ARCHIVED' : 'PUBLISHED' };
     },
-    async isOwner(userId, courseId) {
+    async isOwner(userId, _courseId) {
       return Number(userId) === 2;
     },
-    async isEnrolled(userId, courseId) {
+    async isEnrolled(userId, _courseId) {
       return Number(userId) === 5;
     },
     async getLessonSummary(lessonId) {
