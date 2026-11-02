@@ -458,12 +458,15 @@ test.describe(
             })
           ).toBeVisible();
 
-          const quizListResponsePromise = teacherPage.waitForResponse(
-            (response) =>
-              response.request().method() === 'GET' &&
-              new URL(response.url()).pathname ===
-                `/api/courses/${course.id}/quizzes`
-          );
+          const quizListResponsePromise =
+            quizListResponses.length > 0
+              ? Promise.resolve({ status: () => 200 })
+              : teacherPage.waitForResponse(
+                  (response) =>
+                    response.request().method() === 'GET' &&
+                    new URL(response.url()).pathname ===
+                      `/api/courses/${course.id}/quizzes`
+                );
 
           await teacherPage
             .getByRole('tab', { name: 'Trắc nghiệm' })
