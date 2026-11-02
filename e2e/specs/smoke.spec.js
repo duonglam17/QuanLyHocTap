@@ -10,7 +10,7 @@ const homeByRole = {
 for (const [role, account] of Object.entries(accounts)) {
   playwrightTest(`smoke: ${role} can sign in through /login and reach its home`, async ({ page }) => {
     await page.goto('/login');
-    await expect(page.getByRole('heading', { name: 'Đăng nhập LMS Mini' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Đăng nhập LAL Edu' })).toBeVisible();
     await page.getByLabel('Tên đăng nhập hoặc email').fill(account.username);
     await page.getByLabel('Mật khẩu').fill(account.password);
     await page.getByRole('button', { name: 'Đăng nhập' }).click();

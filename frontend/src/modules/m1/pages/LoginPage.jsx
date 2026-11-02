@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/shared/auth/useAuth.js';
-import { getSafeRedirectPath } from '@/shared/lib/index.js';
+import { getSafeRedirectPath, APP_NAME } from '@/shared/lib/index.js';
 import { LoginForm } from '../components/LoginForm.jsx';
 
 function getReturnPath(from) {
@@ -96,7 +96,7 @@ export function LoginPage() {
       <section className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-sm sm:p-8">
         <header className="mb-6 grid gap-2 text-center sm:text-left">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            Đăng nhập LMS Mini
+            Đăng nhập {APP_NAME}
           </h1>
           <p className="text-sm text-muted-foreground">
             Sử dụng tài khoản được cấp để tiếp tục không gian học tập.
@@ -110,7 +110,7 @@ export function LoginPage() {
         />
 
         <footer className="mt-6 border-t border-border pt-4 text-center text-xs text-muted-foreground">
-          <p>Hệ thống Quản lý Học tập - Mini LMS</p>
+          <p>Hệ thống Quản lý Học tập - {APP_NAME}</p>
         </footer>
       </section>
     </main>

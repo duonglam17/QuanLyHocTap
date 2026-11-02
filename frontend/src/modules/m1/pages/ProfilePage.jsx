@@ -5,6 +5,7 @@ import { Button } from '@/shared/components/atoms/Button.jsx';
 import { Badge } from '@/shared/components/atoms/Badge.jsx';
 import { Skeleton } from '@/shared/components/atoms/Skeleton.jsx';
 import { formatDateTime } from '@/shared/lib/formatters.js';
+import { APP_NAME } from '@/shared/lib/index.js';
 import { useAuth } from '@/shared/auth/useAuth.js';
 import { getMe } from '../api/users.js';
 import { ChangePasswordDialog } from '../components/ChangePasswordDialog.jsx';
@@ -73,7 +74,7 @@ export function ProfilePage() {
             Thông tin tài khoản
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Quản lý và xem chi tiết hồ sơ cá nhân của bạn trong hệ thống LMS Mini.
+            Quản lý và xem chi tiết hồ sơ cá nhân của bạn trong hệ thống {APP_NAME}.
           </p>
         </div>
         {profile && profile.role !== 'ADMIN' ? (

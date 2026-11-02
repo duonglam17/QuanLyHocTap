@@ -4,7 +4,7 @@ const logger = require('./common/logger');
 
 function startServer() {
   const server = app.listen(env.PORT, () => {
-    logger.info(`LMS Mini backend đang lắng nghe tại cổng ${env.PORT}`);
+    logger.info(`LAL Edu backend đang lắng nghe tại cổng ${env.PORT}`);
   });
 
   const shutdown = (signal) => {

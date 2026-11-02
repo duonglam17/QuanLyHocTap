@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: LMS Mini M2 API
+  title: LAL Edu M2 API
   version: 1.0.0
   description: M2 assignment, grading, and personal gradebook endpoints.
 servers:

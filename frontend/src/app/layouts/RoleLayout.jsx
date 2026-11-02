@@ -14,6 +14,7 @@ import { Button } from '../../shared/components/atoms/Button.jsx';
 import { useAuth } from '../../shared/auth/useAuth.js';
 import { getHeaderWidgets } from '../../shared/lib/slots.js';
 import { toast } from '../../shared/components/molecules/Toast.jsx';
+import { APP_NAME } from '../../shared/lib/constants.js';
 import { ProfileDialog } from '../../modules/m1/components/ProfileDialog.jsx';
 
 const roleLabels = {
@@ -129,7 +130,7 @@ function Topbar({
             {navigationOpen ? <X className="size-5" /> : <Menu className="size-5" />}
           </Button>
           <Link className="shrink-0 font-semibold text-primary" to="/">
-            LMS Mini
+            {APP_NAME}
           </Link>
         </div>
         <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-4">

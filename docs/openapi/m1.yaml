@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: LMS Mini M1 API
+  title: LAL Edu M1 API
   version: 1.0.0
   description: M1 authentication, course, enrollment, and module availability endpoints.
 servers:
