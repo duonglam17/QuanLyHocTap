@@ -3,6 +3,15 @@ class UserController {
     this.userService = userService;
   }
 
+  async getMe(req, res, next) {
+    try {
+      const user = await this.userService.getMe(req.user.id);
+      return res.status(200).json(user);
+    } catch (error) {
+      return next(error);
+    }
+  }
+
   async list(req, res, next) {
     try {
       const result = await this.userService.listUsers(req.query);

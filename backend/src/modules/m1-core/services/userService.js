@@ -47,6 +47,22 @@ class UserService {
     }
   }
 
+  async getMe(userId) {
+    const validUserId = this._validateUserId(userId);
+    const user = await this.userRepository.findById(validUserId);
+    if (!user) {
+      throw new NotFoundError('Người dùng không tồn tại');
+    }
+    return {
+      id: user.id,
+      fullName: user.fullName,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+      createdAt: user.createdAt
+    };
+  }
+
   async listUsers({ search = '', role, status, page = 1, limit = 20 } = {}) {
     if (typeof search !== 'string' || search.length > 100) {
       throw new ValidationError('Từ khóa tìm kiếm tối đa 100 ký tự');
