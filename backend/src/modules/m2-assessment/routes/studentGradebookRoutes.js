@@ -15,7 +15,7 @@ function createStudentGradebookRouter({ controller } = {}) {
     );
 
   router.get(
-    '/courses/:courseId/my-grades',
+    ['/courses/:courseId/my-grades', '/m2-assessment/courses/:courseId/my-grades'],
     requireAuth,
     requireRole(['SINH_VIEN']),
     gradebookController.getMyCourseGrades

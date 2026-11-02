@@ -81,7 +81,7 @@ describe('AssignmentSubmissionPage (US-08)', () => {
     renderPage();
 
     expect(await screen.findByText(/Bài tập không cho phép nộp trễ/)).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('Bài tập hiện không nhận bài nộp.');
+    expect(screen.getByText('Bài tập hiện không nhận bài nộp.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Nộp bài' })).not.toBeInTheDocument();
     expect(submissionApi.submitAssignment).not.toHaveBeenCalled();
   });

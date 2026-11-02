@@ -76,11 +76,19 @@ router.get('/ping', (req, res) => {
   });
 });
 
+const globalContracts = require('../../contracts');
+
 module.exports = {
   router,
   init(ctx) {
+    const port = createCourseAccessPort(courseRepository);
     setCourseAccessPortResolver(ctx.contracts.getPort);
-    ctx.contracts.registerPort('courseAccess', createCourseAccessPort(courseRepository));
+    ctx.contracts.registerPort('courseAccess', port);
+    try {
+      globalContracts.registerPort('courseAccess', port);
+    } catch (error) {
+      ctx.logger?.debug?.('courseAccess already registered in global registry', error);
+    }
     lessonService.startCleanupJob();
   }
 };

@@ -21,11 +21,13 @@ vi.mock('@/shared/components/molecules/Toast.jsx', () => ({
 
 function renderCourseDetailPage({
   courseId = '101',
-  user = { id: 2, role: 'GIANG_VIEN', fullName: 'Cô Mai' }
+  user = { id: 2, role: 'GIANG_VIEN', fullName: 'Cô Mai' },
+  initialEntry
 } = {}) {
+  const entry = initialEntry || `/courses/${courseId}`;
   return render(
     <AuthContext.Provider value={{ user, status: 'authenticated', login: vi.fn(), logout: vi.fn() }}>
-      <MemoryRouter initialEntries={[`/courses/${courseId}`]}>
+      <MemoryRouter initialEntries={[entry]}>
         <Routes>
           <Route element={<CourseDetailPage />} path="/courses/:courseId" />
           <Route element={<p>Danh sách khóa học</p>} path="/courses" />
@@ -302,5 +304,25 @@ describe('CourseDetailPage (US-03, US-04, Slots & Archive)', () => {
     expect(formatDateTime(null)).toBe('Chưa có');
     expect(formatDateTime(undefined)).toBe('Chưa có');
     expect(formatScore(8.5)).toBe('8,5');
+  });
+
+  it('activates the tab requested via URL query param ?tab=', async () => {
+    const mockCourse = {
+      id: 101,
+      code: 'INT3101',
+      title: 'Lập trình Web nâng cao',
+      ownerId: 2,
+      status: 'PUBLISHED'
+    };
+    courseApi.getCourse.mockResolvedValue({ course: mockCourse });
+    slotsLib.getCourseTabs.mockReturnValue([
+      { id: 'lessons', label: 'Bài giảng', order: 10, Component: () => <div>Nội dung Bài giảng</div> },
+      { id: 'assignments', label: 'Bài tập', order: 20, Component: () => <div>Nội dung Bài tập</div> }
+    ]);
+
+    renderCourseDetailPage({ initialEntry: '/courses/101?tab=assignments' });
+    expect(await screen.findByText('Lập trình Web nâng cao')).toBeInTheDocument();
+    expect(screen.getByText('Nội dung Bài tập')).toBeInTheDocument();
+    expect(screen.queryByText('Nội dung Bài giảng')).not.toBeInTheDocument();
   });
 });

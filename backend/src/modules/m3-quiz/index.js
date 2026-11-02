@@ -172,14 +172,23 @@ function init(ctx) {
   });
 
   const quizResultsRepository = createQuizResultsRepository(ctx.db, ctx.common.clock);
-  ctx.contracts.registerPort('quizResults', {
+  const quizResultsPort = {
     getQuizScoresForCourse(...args) {
       return quizResultsRepository.getQuizScoresForCourse(...args);
     },
     getQuizScoresForStudent(...args) {
       return quizResultsRepository.getQuizScoresForStudent(...args);
     }
-  });
+  };
+  ctx.contracts.registerPort('quizResults', quizResultsPort);
+  try {
+    const globalContracts = require('../../contracts');
+    if (globalContracts && typeof globalContracts.registerPort === 'function') {
+      globalContracts.registerPort('quizResults', quizResultsPort);
+    }
+  } catch (error) {
+    ctx.logger?.debug?.('quizResults already registered in global registry', error);
+  }
 
   const announcementRepository = createAnnouncementRepository(ctx.db);
   announcementService = createAnnouncementService({
