@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Mail, Shield, User, UserCheck } from 'lucide-react';
+import { Calendar, Lock, Mail, Shield, User, UserCheck } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -15,6 +15,7 @@ import { Skeleton } from '@/shared/components/atoms/Skeleton.jsx';
 import { formatDateTime } from '@/shared/lib/formatters.js';
 import { useAuth } from '@/shared/auth/useAuth.js';
 import { getMe } from '../api/users.js';
+import { ChangePasswordDialog } from './ChangePasswordDialog.jsx';
 
 const roleLabels = {
   ADMIN: 'Quản trị viên',
@@ -26,6 +27,7 @@ export function ProfileDialog({ open, onOpenChange }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const navigate = useNavigate();
   const { logout } = useAuth();
 
@@ -163,12 +165,28 @@ export function ProfileDialog({ open, onOpenChange }) {
           </div>
         ) : null}
 
-        <DialogFooter>
+        <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-between sm:space-x-2">
+          {profile && profile.role !== 'ADMIN' ? (
+            <Button
+              className="flex items-center gap-2"
+              onClick={() => setChangePasswordOpen(true)}
+              variant="outline"
+            >
+              <Lock className="size-4" />
+              Đổi mật khẩu
+            </Button>
+          ) : <span />}
           <Button onClick={() => onOpenChange(false)} variant="outline">
             Đóng
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      <ChangePasswordDialog
+        onOpenChange={setChangePasswordOpen}
+        onSuccess={() => onOpenChange(false)}
+        open={changePasswordOpen}
+      />
     </Dialog>
   );
 }

@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const bcrypt = require('bcrypt');
 const {
+  BadRequestError,
   ConflictError,
   ForbiddenError,
   NotFoundError,
@@ -61,6 +62,49 @@ class UserService {
       role: user.role,
       createdAt: user.createdAt
     };
+  }
+
+  async changePassword(userId, { currentPassword, newPassword } = {}) {
+    const validUserId = this._validateUserId(userId);
+
+    if (typeof currentPassword !== 'string' || !currentPassword) {
+      throw new BadRequestError('Mật khẩu hiện tại không được để trống');
+    }
+    if (typeof newPassword !== 'string' || !newPassword) {
+      throw new BadRequestError('Mật khẩu mới không được để trống');
+    }
+
+    const hasMinLength = newPassword.length >= 8;
+    const hasLower = /[a-z]/.test(newPassword);
+    const hasUpper = /[A-Z]/.test(newPassword);
+    const hasDigit = /\d/.test(newPassword);
+    const hasSpecial = /[^A-Za-z0-9]/.test(newPassword);
+
+    if (!hasMinLength || !hasLower || !hasUpper || !hasDigit || !hasSpecial) {
+      throw new BadRequestError(
+        'Mật khẩu mới phải có tối thiểu 8 ký tự, bao gồm chữ hoa, chữ thường, số và ký tự đặc biệt'
+      );
+    }
+
+    const user = await this.userRepository.findUserWithPassword(validUserId);
+    if (!user) {
+      throw new NotFoundError('Người dùng không tồn tại');
+    }
+
+    const passwordMatches = await this.passwordHasher.compare(currentPassword, user.passwordHash);
+    if (!passwordMatches) {
+      throw new BadRequestError('Mật khẩu hiện tại không đúng');
+    }
+
+    const isSameAsOld = await this.passwordHasher.compare(newPassword, user.passwordHash);
+    if (isSameAsOld) {
+      throw new BadRequestError('Mật khẩu mới phải khác mật khẩu hiện tại');
+    }
+
+    const newHash = await this.passwordHasher.hash(newPassword, 10);
+    await this.userRepository.updatePassword(validUserId, newHash);
+
+    return { message: 'Đổi mật khẩu thành công' };
   }
 
   async listUsers({ search = '', role, status, page = 1, limit = 20 } = {}) {

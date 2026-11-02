@@ -34,6 +34,7 @@ describe('ProfileDialog (Thông tin tài khoản)', () => {
     expect(screen.getByText('mai.nguyen@lms.edu.vn')).toBeInTheDocument();
     expect(screen.getAllByText('Giảng viên').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/01\/11\/2026/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Đổi mật khẩu/i })).toBeInTheDocument();
   });
 
   it('handles 401 error and calls logout / navigates to /login', async () => {
@@ -72,5 +73,36 @@ describe('ProfileDialog (Thông tin tài khoản)', () => {
     });
 
     expect(screen.getByRole('button', { name: 'Thử lại' })).toBeInTheDocument();
+  });
+
+  it('opens change password dialog when clicking Đổi mật khẩu button', async () => {
+    vi.spyOn(usersApi, 'getMe').mockResolvedValueOnce({
+      id: 3,
+      fullName: 'Sinh viên Test',
+      username: 'sv_test',
+      email: 'sv.test@lms.edu.vn',
+      role: 'SINH_VIEN',
+      createdAt: '2026-11-01T08:30:00.000Z'
+    });
+
+    render(
+      <MemoryRouter>
+        <AuthContext.Provider value={{ user: { role: 'SINH_VIEN' }, logout: vi.fn() }}>
+          <ProfileDialog onOpenChange={vi.fn()} open={true} />
+        </AuthContext.Provider>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Sinh viên Test')).toBeInTheDocument();
+    });
+
+    const changePasswordBtn = screen.getByRole('button', { name: /Đổi mật khẩu/i });
+    expect(changePasswordBtn).toBeInTheDocument();
+    changePasswordBtn.click();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Mật khẩu hiện tại/)).toBeInTheDocument();
+    });
   });
 });

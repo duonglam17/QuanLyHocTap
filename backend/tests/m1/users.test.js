@@ -32,6 +32,16 @@ function createUserHarness() {
     async findById(userId) {
       return state.users.get(userId) || null;
     },
+    async findUserWithPassword(userId) {
+      return state.users.get(userId) || null;
+    },
+    async updatePassword(userId, passwordHash) {
+      const user = state.users.get(userId);
+      if (!user) return false;
+      user.passwordHash = passwordHash;
+      user.tokenVersion = (user.tokenVersion || 1) + 1;
+      return true;
+    },
     async create(user) {
       if (state.duplicate) {
         const error = new Error('Duplicate user');
@@ -73,6 +83,9 @@ function createUserHarness() {
     passwordHasher: {
       async hash(password, rounds) {
         return `bcrypt-${rounds}-${password}`;
+      },
+      async compare(password, hash) {
+        return hash === `bcrypt-10-${password}` || hash === password;
       }
     },
     clock: { now: () => new Date('2026-10-22T00:00:00.000Z') },
@@ -375,6 +388,89 @@ test('GET /api/users/me returns profile for GIANG_VIEN and SINH_VIEN, 403 for AD
     assert.equal(studentRes.body.username, 'sv_nam');
     assert.equal(studentRes.body.role, 'SINH_VIEN');
     assert.equal(studentRes.body.passwordHash, undefined);
+  } finally {
+    db.query = originalQuery;
+  }
+});
+
+test('PUT /api/users/me/password handles change password, weak password, duplicate, wrong old password, 403 admin, 401 unauth', async () => {
+  const { state, service } = createUserHarness();
+  state.users.set(10, {
+    id: 10,
+    username: 'gv_mai',
+    email: 'mai.nguyen@lms.edu.vn',
+    fullName: 'Cô Nguyễn Thị Mai',
+    role: 'GIANG_VIEN',
+    status: 'ACTIVE',
+    tokenVersion: 1,
+    passwordHash: 'MatKhau@123'
+  });
+
+  const app = express();
+  app.use(express.json());
+  app.use('/api/users', createUserRouter({ userController: new UserController(service) }));
+  app.use(errorHandler);
+
+  const originalQuery = db.query;
+  db.query = async () => [[{ status: 'ACTIVE', token_version: 1 }], []];
+
+  const adminToken = jwt.sign({ user_id: 1, role: 'ADMIN', token_version: 1 }, config.JWT_SECRET);
+  const teacherToken = jwt.sign(
+    { user_id: 10, role: 'GIANG_VIEN', token_version: 1 },
+    config.JWT_SECRET
+  );
+
+  try {
+    // 1. Chưa đăng nhập -> 401
+    const unauth = await request(app).put('/api/users/me/password').send({
+      currentPassword: 'MatKhau@123',
+      newPassword: 'NewPassword@456'
+    });
+    assert.equal(unauth.status, 401);
+
+    // 2. Admin gọi -> 403
+    const adminRes = await request(app)
+      .put('/api/users/me/password')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ currentPassword: 'MatKhau@123', newPassword: 'NewPassword@456' });
+    assert.equal(adminRes.status, 403);
+    assert.equal(adminRes.body.message, 'Quản trị viên không có quyền xem trang này');
+
+    // 3. Sai mật khẩu hiện tại -> 400
+    const wrongCurrent = await request(app)
+      .put('/api/users/me/password')
+      .set('Authorization', `Bearer ${teacherToken}`)
+      .send({ currentPassword: 'WrongPassword123', newPassword: 'NewPassword@456' });
+    assert.equal(wrongCurrent.status, 400);
+    assert.match(wrongCurrent.body.message, /Mật khẩu hiện tại không đúng/);
+
+    // 4. Mật khẩu mới yếu (< 8 ký tự hoặc thiếu số/hoa/kí tự đặc biệt) -> 400
+    const weakPass = await request(app)
+      .put('/api/users/me/password')
+      .set('Authorization', `Bearer ${teacherToken}`)
+      .send({ currentPassword: 'MatKhau@123', newPassword: 'weak' });
+    assert.equal(weakPass.status, 400);
+    assert.match(weakPass.body.message, /tối thiểu 8 ký tự/);
+
+    // 5. Mật khẩu mới trùng mật khẩu cũ -> 400
+    const samePass = await request(app)
+      .put('/api/users/me/password')
+      .set('Authorization', `Bearer ${teacherToken}`)
+      .send({ currentPassword: 'MatKhau@123', newPassword: 'MatKhau@123' });
+    assert.equal(samePass.status, 400);
+    assert.match(samePass.body.message, /phải khác mật khẩu hiện tại/);
+
+    // 6. Đổi thành công -> 200, cập nhật tokenVersion và passwordHash
+    const success = await request(app)
+      .put('/api/users/me/password')
+      .set('Authorization', `Bearer ${teacherToken}`)
+      .send({ currentPassword: 'MatKhau@123', newPassword: 'NewPassword@456' });
+    assert.equal(success.status, 200);
+    assert.equal(success.body.message, 'Đổi mật khẩu thành công');
+
+    const updatedUser = state.users.get(10);
+    assert.equal(updatedUser.passwordHash, 'bcrypt-10-NewPassword@456');
+    assert.equal(updatedUser.tokenVersion, 2);
   } finally {
     db.query = originalQuery;
   }

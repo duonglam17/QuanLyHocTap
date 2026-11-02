@@ -25,6 +25,19 @@ function createUserRouter({ userController } = {}) {
     userController.getMe.bind(userController)
   );
 
+  // PUT /api/users/me/password: Đổi mật khẩu cá nhân cho GIANG_VIEN và SINH_VIEN
+  router.put(
+    '/me/password',
+    requireAuth,
+    (req, _res, next) => {
+      if (req.user?.role === 'ADMIN') {
+        throw new ForbiddenError('Quản trị viên không có quyền xem trang này');
+      }
+      next();
+    },
+    userController.changePassword.bind(userController)
+  );
+
   // Mọi route quản trị người dùng bên dưới bắt buộc quyền ADMIN
   router.use(requireAuth, requireRole('ADMIN'));
 
